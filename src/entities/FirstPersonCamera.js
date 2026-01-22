@@ -28,9 +28,13 @@ export class FirstPersonCamera {
         // Target position for smoothing
         this.targetPosition = new THREE.Vector3();
         
-        // Head bob state (future feature)
-        this.bobTime = 0;
-        this.bobActive = false;
+        // Head bob state - procedural view bobbing
+        this.bobPhase = 0;           // Current phase in bob cycle
+        this.bobIntensity = 0;       // Current intensity (0-1), smoothly interpolated
+        this.targetBobIntensity = 0; // Target intensity based on movement state
+        this.bobVertical = 0;        // Current vertical offset
+        this.bobHorizontal = 0;      // Current horizontal offset
+        this.bobRoll = 0;            // Current roll for bob
         
         // Wall run tilt settings
         this.wallRunTiltAngle = 0.25; // About 15 degrees in radians
@@ -64,10 +68,13 @@ export class FirstPersonCamera {
         );
         
         // Apply rotation to camera (YXZ order, then add roll)
+        // Combine wall run tilt with head bob roll
+        const totalRoll = this.roll + this.bobRoll;
+        
         this.camera.rotation.order = 'YXZ';
         this.camera.rotation.x = this.pitch;
         this.camera.rotation.y = this.yaw;
-        this.camera.rotation.z = this.roll;
+        this.camera.rotation.z = totalRoll;
     }
 
     /**
@@ -139,24 +146,97 @@ export class FirstPersonCamera {
     }
 
     /**
-     * Update head bob effect based on movement
+     * Update procedural head bob effect based on movement
      * @param {boolean} isMoving - Is the player moving
-     * @param {boolean} isRunning - Is the player running
+     * @param {boolean} isSprinting - Is the player sprinting
+     * @param {boolean} isGrounded - Is the player on the ground
+     * @param {boolean} isWallRunning - Is the player wall running
      * @param {number} deltaTime - Time since last frame
      */
-    updateHeadBob(isMoving, isRunning, deltaTime) {
-        if (!isMoving) {
-            this.bobTime = 0;
-            return;
+    updateHeadBob(isMoving, isSprinting, isGrounded, isWallRunning, deltaTime) {
+        // Bob settings for different states
+        const walkFrequency = 7;      // Steps per second while walking
+        const sprintFrequency = 11;   // Steps per second while sprinting
+        const wallRunFrequency = 6;   // Slower, smoother rhythm for wall running
+        const walkVertical = 0.025;   // Subtle vertical amplitude
+        const sprintVertical = 0.055; // Stronger vertical when sprinting
+        const wallRunVertical = 0.02; // Subtle vertical for wall run
+        const walkHorizontal = 0.012; // Subtle horizontal sway
+        const sprintHorizontal = 0.025; // More sway when sprinting
+        const wallRunHorizontal = 0.015; // Gentle horizontal for wall run
+        const walkRoll = 0.008;       // Subtle roll
+        const sprintRoll = 0.018;     // More roll when sprinting
+        const wallRunRollBob = 0.006; // Subtle roll bob during wall run
+        
+        // Determine target intensity and frequency
+        let targetIntensity = 0;
+        let frequency = walkFrequency;
+        let verticalAmpBase = walkVertical;
+        let horizontalAmpBase = walkHorizontal;
+        let rollAmpBase = walkRoll;
+        
+        if (isWallRunning) {
+            // Wall running gets its own bob profile
+            targetIntensity = 1.0;
+            frequency = wallRunFrequency;
+            verticalAmpBase = wallRunVertical;
+            horizontalAmpBase = wallRunHorizontal;
+            rollAmpBase = wallRunRollBob;
+        } else if (isMoving && isGrounded) {
+            if (isSprinting) {
+                targetIntensity = 1.0;
+                frequency = sprintFrequency;
+                verticalAmpBase = sprintVertical;
+                horizontalAmpBase = sprintHorizontal;
+                rollAmpBase = sprintRoll;
+            } else {
+                targetIntensity = 0.5; // Walking is half intensity
+                frequency = walkFrequency;
+                verticalAmpBase = walkVertical;
+                horizontalAmpBase = walkHorizontal;
+                rollAmpBase = walkRoll;
+            }
         }
         
-        const frequency = CAMERA.BOB_FREQUENCY * (isRunning ? 1.5 : 1);
-        const amplitude = CAMERA.BOB_AMPLITUDE * (isRunning ? 1.3 : 1);
+        this.targetBobIntensity = targetIntensity;
         
-        this.bobTime += deltaTime * frequency * Math.PI * 2;
+        // Smoothly blend intensity (fast ramp up, slower ramp down)
+        const blendSpeed = this.bobIntensity < this.targetBobIntensity ? 12 : 6;
+        this.bobIntensity = THREE.MathUtils.lerp(
+            this.bobIntensity,
+            this.targetBobIntensity,
+            1 - Math.exp(-blendSpeed * deltaTime)
+        );
         
-        const bobOffset = Math.sin(this.bobTime) * amplitude;
-        this.eyeOffset.y = PLAYER.EYE_HEIGHT + bobOffset;
+        // Only advance phase when there's intensity
+        if (this.bobIntensity > 0.01) {
+            this.bobPhase += deltaTime * frequency * Math.PI * 2;
+        } else {
+            // Smoothly reset phase to 0 when stopped
+            this.bobPhase *= 0.9;
+        }
+        
+        // Calculate bob values using sine waves with current amplitudes
+        // Vertical: up-down motion
+        this.bobVertical = Math.sin(this.bobPhase) * verticalAmpBase * this.bobIntensity;
+        
+        // Horizontal: left-right sway (half frequency, offset phase)
+        this.bobHorizontal = Math.sin(this.bobPhase * 0.5) * horizontalAmpBase * this.bobIntensity;
+        
+        // Roll: slight head tilt with sway
+        this.bobRoll = Math.sin(this.bobPhase * 0.5 + 0.5) * rollAmpBase * this.bobIntensity;
+        
+        // Apply to eye offset (position-based bob)
+        this.eyeOffset.x = this.bobHorizontal;
+        this.eyeOffset.y = PLAYER.EYE_HEIGHT + this.bobVertical;
+    }
+    
+    /**
+     * Get the current bob roll for camera rotation
+     * @returns {number} Roll angle in radians from head bob
+     */
+    getBobRoll() {
+        return this.bobRoll;
     }
 
     /**

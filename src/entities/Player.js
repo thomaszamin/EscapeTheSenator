@@ -83,6 +83,7 @@ export class Player {
         
         // Update camera
         this.camera.updateRotation(deltaTime);
+        this.camera.updateHeadBob(this.isMoving, this.isSprinting, this.isGrounded, this.isWallRunning, deltaTime);
         this.camera.updatePosition(this.position, deltaTime);
         
         // Emit sprint events
