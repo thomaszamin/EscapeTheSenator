@@ -23,7 +23,7 @@ export const PLAYER = {
     AIR_CONTROL: 0.3,
     
     // Jumping
-    JUMP_FORCE: 10,
+    JUMP_FORCE: 12,
     JUMP_COOLDOWN: 0.1,
     COYOTE_TIME: 0.15,  // Time after leaving ground where jump still works
     JUMP_BUFFER: 0.1,   // Pre-jump input buffer

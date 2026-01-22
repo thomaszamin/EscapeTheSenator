@@ -15,6 +15,8 @@ export class FirstPersonCamera {
         // Rotation state (Euler angles)
         this.pitch = 0; // Up/down rotation (X axis)
         this.yaw = 0;   // Left/right rotation (Y axis)
+        this.roll = 0;  // Tilt rotation (Z axis) - for wall running
+        this.targetRoll = 0; // Target roll for smooth interpolation
         
         // Position offset from player
         this.eyeOffset = new THREE.Vector3(0, PLAYER.EYE_HEIGHT, 0);
@@ -29,6 +31,10 @@ export class FirstPersonCamera {
         // Head bob state (future feature)
         this.bobTime = 0;
         this.bobActive = false;
+        
+        // Wall run tilt settings
+        this.wallRunTiltAngle = 0.25; // About 15 degrees in radians
+        this.tiltSmoothSpeed = 8; // How fast to transition tilt
     }
 
     /**
@@ -50,10 +56,38 @@ export class FirstPersonCamera {
             Math.min(CAMERA.PITCH_LIMIT, this.pitch)
         );
         
-        // Apply rotation to camera
+        // Smoothly interpolate roll towards target
+        this.roll = THREE.MathUtils.lerp(
+            this.roll,
+            this.targetRoll,
+            1 - Math.exp(-this.tiltSmoothSpeed * deltaTime)
+        );
+        
+        // Apply rotation to camera (YXZ order, then add roll)
         this.camera.rotation.order = 'YXZ';
         this.camera.rotation.x = this.pitch;
         this.camera.rotation.y = this.yaw;
+        this.camera.rotation.z = this.roll;
+    }
+
+    /**
+     * Set wall run tilt based on wall normal
+     * @param {boolean} isWallRunning - Whether currently wall running
+     * @param {THREE.Vector3} wallNormal - Normal of the wall (pointing away from wall)
+     */
+    setWallRunTilt(isWallRunning, wallNormal) {
+        if (!isWallRunning) {
+            this.targetRoll = 0;
+            return;
+        }
+        
+        // Calculate which side the wall is on relative to camera
+        const right = this.getRightDirection();
+        const dot = right.dot(wallNormal);
+        
+        // If wall is on the right (normal points right), tilt left (negative roll)
+        // If wall is on the left (normal points left), tilt right (positive roll)
+        this.targetRoll = -dot * this.wallRunTiltAngle;
     }
 
     /**

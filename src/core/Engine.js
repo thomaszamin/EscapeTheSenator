@@ -67,6 +67,9 @@ export class Engine {
         // Build the world
         this.world.build();
         
+        // Give player access to obstacles for collision detection
+        this.player.setObstacles(this.world.getObstacles());
+        
         // Setup event listeners
         this.setupEventListeners();
         

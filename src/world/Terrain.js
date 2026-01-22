@@ -146,6 +146,7 @@ export class Terrain {
             
             this.scene.add(wall);
             this.meshes.push(wall);
+            this.obstacles.push(wall); // Add walls to obstacles for collision detection
         });
     }
 
