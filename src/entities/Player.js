@@ -671,12 +671,22 @@ export class Player {
         // Apply Y movement (vertical) with collision check for upward movement
         const moveY = this.velocity.y * deltaTime;
         if (moveY !== 0) {
-            this.position.y += moveY;
-            
-            // Check for ceiling/overhead collision when moving up
-            if (moveY > 0 && this.checkCeilingCollision()) {
-                this.position.y -= moveY;
-                this.velocity.y = 0;
+            if (moveY > 0) {
+                // Moving up - check for ceiling collision before moving
+                const ceilingHeight = this.getCeilingHeight();
+                const headTopY = this.position.y + this.currentHeight;
+                
+                if (ceilingHeight !== null && headTopY + moveY >= ceilingHeight) {
+                    // Would hit ceiling - position player so head is just below ceiling
+                    this.position.y = ceilingHeight - this.currentHeight;
+                    this.velocity.y = 0;
+                } else {
+                    // No ceiling collision, move normally
+                    this.position.y += moveY;
+                }
+            } else {
+                // Moving down - no ceiling check needed
+                this.position.y += moveY;
             }
         }
         
@@ -702,18 +712,17 @@ export class Player {
     }
 
     /**
-     * Check for ceiling/overhead collision when moving upward
-     * @returns {boolean} True if collision detected above player
+     * Get the height of the ceiling above the player
+     * @returns {number|null} The Y position of the ceiling, or null if no ceiling found
      */
-    checkCeilingCollision() {
-        if (this.obstacles.length === 0) return false;
+    getCeilingHeight() {
+        if (this.obstacles.length === 0) return null;
         
-        // Camera is at position.y + current eye height, so check from camera height upward
-        // The actual top of the player's head/collision volume should be at camera height + some offset
-        const currentEyeHeight = this.isCrouching || this.isSliding ? PLAYER.CROUCH_EYE_HEIGHT : PLAYER.EYE_HEIGHT;
-        const cameraY = this.position.y + currentEyeHeight;
-        const headTopY = cameraY + (this.currentHeight - currentEyeHeight); // Top of head above camera
+        // this.position.y is the feet/base position
+        // Top of head is simply feet position + current height
+        const headTopY = this.position.y + this.currentHeight;
         
+        // Check multiple points at the top of the player's collision volume
         const checkPoints = [
             new THREE.Vector3(this.position.x, headTopY, this.position.z),
             new THREE.Vector3(this.position.x + PLAYER.RADIUS * 0.7, headTopY, this.position.z),
@@ -723,7 +732,10 @@ export class Player {
         ];
         
         const upDirection = new THREE.Vector3(0, 1, 0);
-        const checkDistance = PLAYER.HEIGHT * 0.15; // Check distance scales with player height
+        // Check up to 2 units above head for ceiling detection
+        const checkDistance = 2.0;
+        
+        let lowestCeiling = null;
         
         for (const point of checkPoints) {
             this._raycaster.set(point, upDirection);
@@ -732,12 +744,17 @@ export class Player {
             const intersects = this._raycaster.intersectObjects(this.obstacles, false);
             
             if (intersects.length > 0) {
-                // Hit something above us
-                return true;
+                const hit = intersects[0];
+                const ceilingY = hit.point.y;
+                
+                // Track the lowest ceiling height (closest to player)
+                if (lowestCeiling === null || ceilingY < lowestCeiling) {
+                    lowestCeiling = ceilingY;
+                }
             }
         }
         
-        return false;
+        return lowestCeiling;
     }
 
     /**
