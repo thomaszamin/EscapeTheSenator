@@ -9,21 +9,125 @@
 <body>
     <div id="game-container">
         <canvas id="game-canvas"></canvas>
+        
+        <!-- Main Menu -->
+        <div id="main-menu" class="menu-overlay visible">
+            <div class="menu-background">
+                <div class="scanlines"></div>
+                <div class="floating-particles">
+                    <div class="particle"></div>
+                    <div class="particle"></div>
+                    <div class="particle"></div>
+                    <div class="particle"></div>
+                    <div class="particle"></div>
+                    <div class="particle"></div>
+                    <div class="particle"></div>
+                    <div class="particle"></div>
+                </div>
+                <div class="cyber-circles">
+                    <div class="cyber-circle circle-1"></div>
+                    <div class="cyber-circle circle-2"></div>
+                    <div class="cyber-circle circle-3"></div>
+                </div>
+            </div>
+            <div class="menu-content main-menu-content">
+                <div class="corner-decor top-left"></div>
+                <div class="corner-decor top-right"></div>
+                <div class="corner-decor bottom-left"></div>
+                <div class="corner-decor bottom-right"></div>
+                <div class="title-container">
+                    <div class="title-glitch" data-text="ESCAPE THE SENATOR">
+                        <h1 class="menu-title">ESCAPE THE SENATOR</h1>
+                    </div>
+                    <div class="title-underline"></div>
+                </div>
+                <p class="menu-subtitle">
+                    <span class="subtitle-bracket">[</span>
+                    A Three.js Experience
+                    <span class="subtitle-bracket">]</span>
+                </p>
+                <div class="menu-divider">
+                    <span class="divider-dot"></span>
+                    <span class="divider-line"></span>
+                    <span class="divider-dot"></span>
+                </div>
+                <div class="menu-buttons">
+                    <button id="btn-sandbox" class="menu-btn">
+                        <span class="btn-icon">▶</span>
+                        <span class="btn-text">SANDBOX</span>
+                        <span class="btn-arrow">→</span>
+                    </button>
+                    <button id="btn-quit" class="menu-btn menu-btn-secondary">
+                        <span class="btn-icon">✕</span>
+                        <span class="btn-text">QUIT</span>
+                        <span class="btn-arrow">→</span>
+                    </button>
+                </div>
+                <div class="menu-footer">
+                    <span class="version">v0.1.0</span>
+                    <span class="status-indicator">
+                        <span class="status-dot"></span>
+                        SYSTEM ONLINE
+                    </span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pause Menu -->
+        <div id="pause-menu" class="menu-overlay hidden">
+            <div class="menu-background pause-bg"></div>
+            <div class="menu-content">
+                <h2 class="menu-title pause-title">PAUSED</h2>
+                <div class="controls-display">
+                    <h3>CONTROLS</h3>
+                    <div class="controls-grid">
+                        <div class="control-item">
+                            <div class="control-keys">
+                                <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
+                            </div>
+                            <span>Move</span>
+                        </div>
+                        <div class="control-item">
+                            <div class="control-keys">
+                                <kbd>SHIFT</kbd>
+                            </div>
+                            <span>Sprint</span>
+                        </div>
+                        <div class="control-item">
+                            <div class="control-keys">
+                                <kbd>SPACE</kbd>
+                            </div>
+                            <span>Jump</span>
+                        </div>
+                        <div class="control-item">
+                            <div class="control-keys">
+                                <kbd>MOUSE</kbd>
+                            </div>
+                            <span>Look Around</span>
+                        </div>
+                        <div class="control-item">
+                            <div class="control-keys">
+                                <kbd>ESC</kbd>
+                            </div>
+                            <span>Pause / Resume</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="menu-buttons">
+                    <button id="btn-resume" class="menu-btn">RESUME</button>
+                    <button id="btn-main-menu" class="menu-btn menu-btn-secondary">MAIN MENU</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- HUD (In-game) -->
         <div id="hud">
             <div id="crosshair">
                 <div class="crosshair-line horizontal"></div>
                 <div class="crosshair-line vertical"></div>
             </div>
             <div id="instructions">
-                <h1>ESCAPE THE SENATOR</h1>
-                <p>Click to start</p>
-                <div class="controls">
-                    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move</span>
-                    <span><kbd>SHIFT</kbd> Sprint</span>
-                    <span><kbd>SPACE</kbd> Jump</span>
-                    <span><kbd>MOUSE</kbd> Look</span>
-                    <span><kbd>ESC</kbd> Pause</span>
-                </div>
+                <p>Click to continue</p>
             </div>
             <div id="debug-info"></div>
         </div>

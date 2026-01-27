@@ -8,9 +8,12 @@ import * as THREE from 'three';
 import { CAMERA, WORLD, RENDER } from '../config/Constants.js';
 import { inputManager } from '../systems/InputManager.js';
 import { globalEvents, Events } from '../systems/EventBus.js';
+import { gameStateManager, GameState } from '../systems/GameStateManager.js';
 import { Player } from '../entities/Player.js';
 import { World } from '../world/World.js';
 import { HUD } from '../ui/HUD.js';
+import { MainMenu } from '../ui/MainMenu.js';
+import { PauseMenu } from '../ui/PauseMenu.js';
 
 export class Engine {
     constructor() {
@@ -24,6 +27,8 @@ export class Engine {
         this.player = null;
         this.world = null;
         this.hud = null;
+        this.mainMenu = null;
+        this.pauseMenu = null;
         
         // Time tracking
         this.clock = new THREE.Clock();
@@ -56,6 +61,9 @@ export class Engine {
         this.setupScene();
         this.setupCamera();
         
+        // Initialize state manager
+        gameStateManager.init();
+        
         // Initialize input
         inputManager.init(this.canvas);
         
@@ -63,6 +71,12 @@ export class Engine {
         this.player = new Player(this.camera);
         this.world = new World(this.scene);
         this.hud = new HUD();
+        
+        // Initialize menus
+        this.mainMenu = new MainMenu();
+        this.pauseMenu = new PauseMenu();
+        this.mainMenu.init();
+        this.pauseMenu.init();
         
         // Build the world
         this.world.build();
@@ -145,14 +159,17 @@ export class Engine {
     setupEventListeners() {
         // Handle pointer lock changes for HUD
         globalEvents.on(Events.INPUT_LOCK, () => {
-            this.hud.onLock();
-            if (this.isPaused) {
-                this.resume();
+            // Only update HUD when playing
+            if (gameStateManager.isPlaying()) {
+                this.hud.onLock();
             }
         });
         
         globalEvents.on(Events.INPUT_UNLOCK, () => {
-            this.hud.onUnlock();
+            // Only show instructions when playing (not in menus)
+            if (gameStateManager.isPlaying()) {
+                this.hud.onUnlock();
+            }
         });
         
         // Player events for HUD
@@ -163,6 +180,43 @@ export class Engine {
         globalEvents.on(Events.PLAYER_SPRINT_END, () => {
             this.hud.showSprintIndicator(false);
         });
+        
+        // State change events
+        globalEvents.on(Events.STATE_CHANGE, ({ from, to }) => {
+            this._onStateChange(from, to);
+        });
+    }
+
+    /**
+     * Handle game state changes
+     */
+    _onStateChange(from, to) {
+        console.log(`[Engine] State changed: ${from} → ${to}`);
+        
+        switch (to) {
+            case GameState.MAIN_MENU:
+                this.isPaused = true;
+                this.hud.onUnlock();
+                // Hide instructions when in main menu
+                const instructions = document.getElementById('instructions');
+                if (instructions) {
+                    instructions.classList.add('hidden');
+                    instructions.classList.remove('visible');
+                }
+                break;
+                
+            case GameState.PLAYING:
+                this.isPaused = false;
+                // Request pointer lock when entering play mode
+                if (!inputManager.isPointerLocked()) {
+                    inputManager.requestPointerLock();
+                }
+                break;
+                
+            case GameState.PAUSED:
+                this.isPaused = true;
+                break;
+        }
     }
 
     /**
@@ -232,8 +286,10 @@ export class Engine {
         // Update FPS counter
         this.updateFPS();
         
-        // Skip updates if paused (but still render)
-        if (!this.isPaused && inputManager.isPointerLocked()) {
+        // Only update game logic when playing and pointer is locked
+        const shouldUpdate = gameStateManager.isPlaying() && inputManager.isPointerLocked();
+        
+        if (shouldUpdate) {
             // Update player (includes physics and camera)
             this.player.update(this.deltaTime);
             
@@ -241,8 +297,10 @@ export class Engine {
             this.world.update(this.deltaTime);
         }
         
-        // Update HUD
-        this.hud.update(this.getDebugInfo());
+        // Update HUD only when in playing state
+        if (gameStateManager.isPlaying()) {
+            this.hud.update(this.getDebugInfo());
+        }
         
         // Clear input state for next frame
         inputManager.update();
@@ -292,6 +350,9 @@ export class Engine {
         
         this.world.dispose();
         this.renderer.dispose();
+        
+        if (this.mainMenu) this.mainMenu.dispose();
+        if (this.pauseMenu) this.pauseMenu.dispose();
         
         globalEvents.clear();
     }

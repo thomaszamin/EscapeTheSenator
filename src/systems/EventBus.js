@@ -123,6 +123,13 @@ export const Events = {
     GAME_START: 'game:start',
     GAME_PAUSE: 'game:pause',
     GAME_RESUME: 'game:resume',
+    STATE_CHANGE: 'state:change',
+    
+    // Menu events
+    MENU_MAIN_SHOW: 'menu:main:show',
+    MENU_MAIN_HIDE: 'menu:main:hide',
+    MENU_PAUSE_SHOW: 'menu:pause:show',
+    MENU_PAUSE_HIDE: 'menu:pause:hide',
     
     // World events
     WORLD_LOADED: 'world:loaded',

@@ -7,6 +7,7 @@
 
 import { INPUT, CAMERA } from '../config/Constants.js';
 import { globalEvents, Events } from './EventBus.js';
+import { gameStateManager, GameState } from './GameStateManager.js';
 
 class InputManager {
     constructor() {
@@ -199,6 +200,12 @@ class InputManager {
     // ==================== Event Handlers ====================
 
     _onKeyDown(event) {
+        // Handle ESC key for pause menu
+        if (event.code === 'Escape') {
+            this._handleEscapeKey();
+            return;
+        }
+        
         // Prevent default for game keys
         if (Object.values(this.bindings).includes(event.code) ||
             Object.values(this.altBindings).includes(event.code)) {
@@ -209,6 +216,30 @@ class InputManager {
             this.keysPressed.add(event.code);
         }
         this.keys.set(event.code, true);
+    }
+
+    /**
+     * Handle ESC key press for pause functionality
+     */
+    _handleEscapeKey() {
+        const currentState = gameStateManager.getState();
+        
+        switch (currentState) {
+            case GameState.PLAYING:
+                // Pause the game when playing
+                gameStateManager.setState(GameState.PAUSED);
+                break;
+                
+            case GameState.PAUSED:
+                // Resume the game when paused
+                gameStateManager.resume();
+                this.requestPointerLock();
+                break;
+                
+            case GameState.MAIN_MENU:
+                // Do nothing in main menu
+                break;
+        }
     }
 
     _onKeyUp(event) {
@@ -234,11 +265,24 @@ class InputManager {
             globalEvents.emit(Events.INPUT_LOCK);
         } else if (!this.mouse.locked && wasLocked) {
             globalEvents.emit(Events.INPUT_UNLOCK);
+            
+            // If we were playing and pointer got unlocked (not via our pause menu),
+            // we should pause the game. The ESC handler already handles this case,
+            // but this catches cases like clicking outside the window.
+            if (gameStateManager.isPlaying()) {
+                // Small delay to let ESC handler process first
+                setTimeout(() => {
+                    if (gameStateManager.isPlaying() && !this.mouse.locked) {
+                        gameStateManager.setState(GameState.PAUSED);
+                    }
+                }, 10);
+            }
         }
     }
 
     _onClick() {
-        if (!this.mouse.locked) {
+        // Only request pointer lock when in playing state and not locked
+        if (!this.mouse.locked && gameStateManager.isPlaying()) {
             this.requestPointerLock();
         }
     }

@@ -5,6 +5,8 @@
  */
 
 import { DEBUG } from '../config/Constants.js';
+import { globalEvents, Events } from '../systems/EventBus.js';
+import { gameStateManager, GameState } from '../systems/GameStateManager.js';
 
 export class HUD {
     constructor() {
@@ -16,6 +18,26 @@ export class HUD {
         // State
         this.isLocked = false;
         this.debugEnabled = DEBUG.SHOW_FPS || DEBUG.SHOW_POSITION || DEBUG.SHOW_VELOCITY;
+        
+        // Bind state change handler
+        this._onStateChange = this._onStateChange.bind(this);
+        globalEvents.on(Events.STATE_CHANGE, this._onStateChange);
+    }
+
+    /**
+     * Handle game state changes
+     */
+    _onStateChange({ from, to }) {
+        // Hide instructions and crosshair when not playing
+        if (to !== GameState.PLAYING) {
+            if (this.crosshair) {
+                this.crosshair.classList.remove('visible');
+            }
+            if (this.instructions) {
+                this.instructions.classList.remove('visible');
+                this.instructions.classList.add('hidden');
+            }
+        }
     }
 
     /**
@@ -24,14 +46,17 @@ export class HUD {
     onLock() {
         this.isLocked = true;
         
-        // Show crosshair
-        if (this.crosshair) {
-            this.crosshair.classList.add('visible');
-        }
-        
-        // Hide instructions
-        if (this.instructions) {
-            this.instructions.classList.add('hidden');
+        // Only show crosshair when playing
+        if (gameStateManager.isPlaying()) {
+            if (this.crosshair) {
+                this.crosshair.classList.add('visible');
+            }
+            
+            // Hide instructions
+            if (this.instructions) {
+                this.instructions.classList.add('hidden');
+                this.instructions.classList.remove('visible');
+            }
         }
     }
 
@@ -46,9 +71,12 @@ export class HUD {
             this.crosshair.classList.remove('visible');
         }
         
-        // Show instructions
-        if (this.instructions) {
-            this.instructions.classList.remove('hidden');
+        // Only show instructions when playing (not in menus)
+        if (gameStateManager.isPlaying()) {
+            if (this.instructions) {
+                this.instructions.classList.remove('hidden');
+                this.instructions.classList.add('visible');
+            }
         }
     }
 
