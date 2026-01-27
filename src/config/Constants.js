@@ -16,8 +16,8 @@ export const PLAYER = {
     RADIUS: 0.4,
     
     // Movement speeds (units per second)
-    WALK_SPEED: 6,
-    RUN_SPEED: 12,
+    WALK_SPEED: 8,
+    RUN_SPEED: 15,
     ACCELERATION: 50,
     DECELERATION: 40,
     AIR_CONTROL: 0.3,
@@ -27,6 +27,20 @@ export const PLAYER = {
     JUMP_COOLDOWN: 0.1,
     COYOTE_TIME: 0.15,  // Time after leaving ground where jump still works
     JUMP_BUFFER: 0.1,   // Pre-jump input buffer
+    
+    // Crouching
+    CROUCH_HEIGHT: 1.0,          // Height when crouched
+    CROUCH_EYE_HEIGHT: 0.8,      // Eye height when crouched
+    CROUCH_SPEED: 3,             // Movement speed when crouched
+    CROUCH_TRANSITION_SPEED: 8,  // How fast to transition crouch height
+    
+    // Sliding
+    SLIDE_SPEED: 18,             // Initial slide speed
+    SLIDE_DURATION: 0.8,         // How long a slide lasts (seconds)
+    SLIDE_FRICTION: 12,          // How fast slide decelerates
+    SLIDE_MIN_SPEED: 3,          // Speed at which slide ends and crouch begins
+    SLIDE_COOLDOWN: 0.5,         // Cooldown before can slide again
+    SLIDE_MIN_SPRINT_TIME: 0.3,  // Minimum sprint duration before slide allowed (seconds)
 };
 
 export const CAMERA = {

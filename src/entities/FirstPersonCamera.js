@@ -20,6 +20,8 @@ export class FirstPersonCamera {
         
         // Position offset from player
         this.eyeOffset = new THREE.Vector3(0, PLAYER.EYE_HEIGHT, 0);
+        this.baseEyeHeight = PLAYER.EYE_HEIGHT;     // Current base eye height (without bob)
+        this.targetEyeHeight = PLAYER.EYE_HEIGHT;   // Target eye height for smooth transitions
         
         // Smoothing (optional, for future use)
         this.smoothing = false;
@@ -146,6 +148,27 @@ export class FirstPersonCamera {
     }
 
     /**
+     * Set the target eye height for crouch/slide transitions
+     * @param {number} height - Target eye height
+     */
+    setTargetEyeHeight(height) {
+        this.targetEyeHeight = height;
+    }
+    
+    /**
+     * Update eye height transition (call before updateHeadBob)
+     * @param {number} deltaTime - Time since last frame
+     */
+    updateEyeHeight(deltaTime) {
+        // Smooth transition to target eye height
+        this.baseEyeHeight = THREE.MathUtils.lerp(
+            this.baseEyeHeight,
+            this.targetEyeHeight,
+            1 - Math.exp(-PLAYER.CROUCH_TRANSITION_SPEED * deltaTime)
+        );
+    }
+
+    /**
      * Update procedural head bob effect based on movement
      * @param {boolean} isMoving - Is the player moving
      * @param {boolean} isSprinting - Is the player sprinting
@@ -156,16 +179,16 @@ export class FirstPersonCamera {
     updateHeadBob(isMoving, isSprinting, isGrounded, isWallRunning, deltaTime) {
         // Bob settings for different states
         const walkFrequency = 7;      // Steps per second while walking
-        const sprintFrequency = 11;   // Steps per second while sprinting
+        const sprintFrequency = 9;    // Steps per second while sprinting (reduced)
         const wallRunFrequency = 6;   // Slower, smoother rhythm for wall running
         const walkVertical = 0.025;   // Subtle vertical amplitude
-        const sprintVertical = 0.055; // Stronger vertical when sprinting
+        const sprintVertical = 0.032; // Reduced vertical when sprinting
         const wallRunVertical = 0.02; // Subtle vertical for wall run
         const walkHorizontal = 0.012; // Subtle horizontal sway
-        const sprintHorizontal = 0.025; // More sway when sprinting
+        const sprintHorizontal = 0.015; // Reduced sway when sprinting
         const wallRunHorizontal = 0.015; // Gentle horizontal for wall run
         const walkRoll = 0.008;       // Subtle roll
-        const sprintRoll = 0.018;     // More roll when sprinting
+        const sprintRoll = 0.010;     // Reduced roll when sprinting
         const wallRunRollBob = 0.006; // Subtle roll bob during wall run
         
         // Determine target intensity and frequency
@@ -228,7 +251,7 @@ export class FirstPersonCamera {
         
         // Apply to eye offset (position-based bob)
         this.eyeOffset.x = this.bobHorizontal;
-        this.eyeOffset.y = PLAYER.EYE_HEIGHT + this.bobVertical;
+        this.eyeOffset.y = this.baseEyeHeight + this.bobVertical;
     }
     
     /**
