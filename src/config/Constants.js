@@ -109,3 +109,52 @@ export const RENDER = {
     ENABLE_SHADOWS: true,
 };
 
+// Parkour infinite world settings
+export const PARKOUR = {
+    // Chunk settings
+    CHUNK_LENGTH: 50,
+    CHUNK_WIDTH: 20,
+    CHUNKS_AHEAD: 3,
+    CHUNKS_BEHIND: 2,
+    
+    // Platform settings
+    PLATFORM_MIN_WIDTH: 3,
+    PLATFORM_MAX_WIDTH: 8,
+    PLATFORM_HEIGHT: 0.5,
+    PLATFORM_MIN_LENGTH: 3,
+    PLATFORM_MAX_LENGTH: 8,
+    
+    // Gap settings
+    GAP_MIN: 2,
+    GAP_MAX: 5,
+    
+    // Height variation
+    HEIGHT_MIN: 0,
+    HEIGHT_MAX: 6,
+    HEIGHT_STEP: 1.5,
+    
+    // Curve settings
+    MAX_CURVE_ANGLE: 15,        // Max degrees per chunk
+    CURVE_FREQUENCY: 0.4,       // Chance of curve per chunk
+    
+    // Special platforms
+    BOUNCE_PAD_CHANCE: 0.12,
+    BOUNCE_FORCE: 18,
+    RAMP_CHANCE: 0.2,
+    WALL_RUN_CHANCE: 0.15,
+    
+    // Death settings
+    DEATH_Y_THRESHOLD: -30,
+    
+    // Start platform
+    START_PLATFORM_LENGTH: 10,
+    START_PLATFORM_WIDTH: 8,
+    
+    // Colors (cyberpunk theme)
+    PLATFORM_COLOR: 0x1a1a2e,
+    PLATFORM_EDGE_COLOR: 0x00ff88,
+    BOUNCE_PAD_COLOR: 0xff00ff,
+    RAMP_COLOR: 0x2a2a4e,
+    WALL_COLOR: 0x0a0a1a,
+};
+

@@ -5,15 +5,18 @@
  */
 
 import * as THREE from 'three';
-import { CAMERA, WORLD, RENDER } from '../config/Constants.js';
+import { CAMERA, WORLD, RENDER, PARKOUR } from '../config/Constants.js';
 import { inputManager } from '../systems/InputManager.js';
 import { globalEvents, Events } from '../systems/EventBus.js';
-import { gameStateManager, GameState } from '../systems/GameStateManager.js';
+import { gameStateManager, GameState, GameMode } from '../systems/GameStateManager.js';
 import { Player } from '../entities/Player.js';
 import { World } from '../world/World.js';
 import { HUD } from '../ui/HUD.js';
 import { MainMenu } from '../ui/MainMenu.js';
 import { PauseMenu } from '../ui/PauseMenu.js';
+
+// InfiniteWorld loaded dynamically to prevent blocking main menu if parkour fails
+let InfiniteWorldClass = null;
 
 export class Engine {
     constructor() {
@@ -26,6 +29,8 @@ export class Engine {
         // Game systems
         this.player = null;
         this.world = null;
+        this.infiniteWorld = null;
+        this.activeWorld = null;
         this.hud = null;
         this.mainMenu = null;
         this.pauseMenu = null;
@@ -70,6 +75,7 @@ export class Engine {
         // Create game systems
         this.player = new Player(this.camera);
         this.world = new World(this.scene);
+        this.infiniteWorld = null; // Created on demand
         this.hud = new HUD();
         
         // Initialize menus
@@ -78,8 +84,9 @@ export class Engine {
         this.mainMenu.init();
         this.pauseMenu.init();
         
-        // Build the world
+        // Build sandbox world (default)
         this.world.build();
+        this.activeWorld = this.world;
         
         // Give player access to obstacles for collision detection
         this.player.setObstacles(this.world.getObstacles());
@@ -207,6 +214,8 @@ export class Engine {
                 
             case GameState.PLAYING:
                 this.isPaused = false;
+                // Setup the correct world based on game mode
+                this.setupGameMode();
                 // Request pointer lock when entering play mode
                 if (!inputManager.isPointerLocked()) {
                     inputManager.requestPointerLock();
@@ -216,6 +225,66 @@ export class Engine {
             case GameState.PAUSED:
                 this.isPaused = true;
                 break;
+        }
+    }
+
+    /**
+     * Setup the game based on current mode
+     */
+    async setupGameMode() {
+        const mode = gameStateManager.getMode();
+        console.log(`[Engine] Setting up game mode: ${mode}`);
+        
+        if (mode === GameMode.PARKOUR) {
+            // Dispose sandbox world if active
+            if (this.activeWorld === this.world && this.world.isLoaded) {
+                this.world.dispose();
+                this.world.isLoaded = false;
+            }
+            
+            // Dynamically load InfiniteWorld if not already loaded
+            if (!InfiniteWorldClass) {
+                try {
+                    const module = await import('../world/parkour/InfiniteWorld.js');
+                    InfiniteWorldClass = module.InfiniteWorld;
+                } catch (error) {
+                    console.error('[Engine] Failed to load InfiniteWorld:', error);
+                    // Fall back to sandbox mode
+                    gameStateManager.setMode(GameMode.SANDBOX);
+                    this.setupGameMode();
+                    return;
+                }
+            }
+            
+            // Create or reset infinite world
+            if (!this.infiniteWorld) {
+                this.infiniteWorld = new InfiniteWorldClass(this.scene);
+                this.infiniteWorld.build();
+            } else {
+                this.infiniteWorld.reset();
+            }
+            
+            this.activeWorld = this.infiniteWorld;
+            
+            // Reset player position for parkour
+            this.player.setPosition(0, 2, 5);
+            this.player.setObstacles(this.infiniteWorld.getObstacles());
+            
+        } else {
+            // Sandbox mode
+            if (this.activeWorld === this.infiniteWorld && this.infiniteWorld) {
+                this.infiniteWorld.dispose();
+                this.infiniteWorld = null;
+            }
+            
+            // Rebuild sandbox world if needed
+            if (!this.world.isLoaded) {
+                this.world.build();
+            }
+            
+            this.activeWorld = this.world;
+            this.player.setPosition(0, 2, 0);
+            this.player.setObstacles(this.world.getObstacles());
         }
     }
 
@@ -293,8 +362,23 @@ export class Engine {
             // Update player (includes physics and camera)
             this.player.update(this.deltaTime);
             
-            // Update world (animations, etc.)
-            this.world.update(this.deltaTime);
+            // Update active world (animations, etc.)
+            if (this.activeWorld) {
+                if (gameStateManager.isParkourMode() && this.infiniteWorld) {
+                    // Update infinite world with player position
+                    this.infiniteWorld.update(this.deltaTime, this.player.position);
+                    
+                    // Update obstacles as chunks change
+                    this.player.setObstacles(this.infiniteWorld.getObstacles());
+                    
+                    // Check for death
+                    if (this.infiniteWorld.checkDeath(this.player.position.y)) {
+                        this.handleParkourDeath();
+                    }
+                } else {
+                    this.activeWorld.update(this.deltaTime);
+                }
+            }
         }
         
         // Update HUD only when in playing state
@@ -324,12 +408,29 @@ export class Engine {
     }
 
     /**
+     * Handle player death in parkour mode
+     */
+    handleParkourDeath() {
+        console.log('[Engine] Player died in parkour mode');
+        globalEvents.emit(Events.PLAYER_DEATH);
+        
+        // Reset the infinite world and player
+        if (this.infiniteWorld) {
+            this.infiniteWorld.reset();
+            this.player.setPosition(0, 2, 5);
+            this.player.setObstacles(this.infiniteWorld.getObstacles());
+        }
+        
+        globalEvents.emit(Events.PLAYER_RESPAWN);
+    }
+
+    /**
      * Get debug information
      */
     getDebugInfo() {
         const playerInfo = this.player.getDebugInfo();
         
-        return {
+        const info = {
             fps: this.fps,
             position: playerInfo.position,
             velocity: playerInfo.velocity,
@@ -337,6 +438,13 @@ export class Engine {
             isGrounded: playerInfo.isGrounded,
             isSprinting: playerInfo.isSprinting,
         };
+        
+        // Add parkour-specific info
+        if (gameStateManager.isParkourMode() && this.infiniteWorld) {
+            info.distance = Math.floor(this.infiniteWorld.getDistance());
+        }
+        
+        return info;
     }
 
     /**
@@ -348,7 +456,8 @@ export class Engine {
         window.removeEventListener('resize', this._onResize);
         inputManager.dispose();
         
-        this.world.dispose();
+        if (this.world) this.world.dispose();
+        if (this.infiniteWorld) this.infiniteWorld.dispose();
         this.renderer.dispose();
         
         if (this.mainMenu) this.mainMenu.dispose();

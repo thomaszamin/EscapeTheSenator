@@ -205,7 +205,7 @@ Physical world geometry.
 ### Phase 2: World Building
 - [ ] Asset loading system
 - [ ] Multiple scene support
-- [ ] Collision with world geometry
+- [x] Collision with world geometry
 - [ ] Interactive objects
 - [ ] Doors/triggers
 

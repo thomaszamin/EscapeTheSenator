@@ -185,6 +185,7 @@ export class World {
             this.scene.remove(this.particles);
             this.particles.geometry.dispose();
             this.particles.material.dispose();
+            this.particles = null;
         }
         
         this.entities.forEach(entity => {
@@ -195,6 +196,7 @@ export class World {
         
         this.entities = [];
         this.interactables = [];
+        this.isLoaded = false;
     }
 }
 

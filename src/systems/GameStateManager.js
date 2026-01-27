@@ -16,10 +16,19 @@ export const GameState = {
     PAUSED: 'paused'
 };
 
+/**
+ * Game mode enum
+ */
+export const GameMode = {
+    SANDBOX: 'sandbox',
+    PARKOUR: 'parkour'
+};
+
 class GameStateManager {
     constructor() {
         this.currentState = GameState.MAIN_MENU;
         this.previousState = null;
+        this.currentMode = GameMode.SANDBOX;
     }
 
     /**
@@ -133,11 +142,49 @@ class GameStateManager {
 
     /**
      * Start playing from main menu
+     * @param {string} mode - Optional game mode (defaults to current mode)
      */
-    startPlaying() {
+    startPlaying(mode = null) {
+        if (mode) {
+            this.currentMode = mode;
+        }
         if (this.currentState === GameState.MAIN_MENU) {
             this.setState(GameState.PLAYING);
         }
+    }
+
+    /**
+     * Get current game mode
+     * @returns {string} Current game mode
+     */
+    getMode() {
+        return this.currentMode;
+    }
+
+    /**
+     * Set game mode
+     * @param {string} mode - Game mode from GameMode enum
+     */
+    setMode(mode) {
+        if (Object.values(GameMode).includes(mode)) {
+            this.currentMode = mode;
+        }
+    }
+
+    /**
+     * Check if in parkour mode
+     * @returns {boolean}
+     */
+    isParkourMode() {
+        return this.currentMode === GameMode.PARKOUR;
+    }
+
+    /**
+     * Check if in sandbox mode
+     * @returns {boolean}
+     */
+    isSandboxMode() {
+        return this.currentMode === GameMode.SANDBOX;
     }
 
     /**

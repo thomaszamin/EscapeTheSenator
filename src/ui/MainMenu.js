@@ -4,7 +4,7 @@
  * Displays the initial menu with Sandbox and Quit options.
  */
 
-import { gameStateManager, GameState } from '../systems/GameStateManager.js';
+import { gameStateManager, GameState, GameMode } from '../systems/GameStateManager.js';
 import { MenuBase, MenuTemplates } from './MenuBase.js';
 
 export class MainMenu extends MenuBase {
@@ -19,6 +19,7 @@ export class MainMenu extends MenuBase {
         super.init();
         
         // Register button handlers
+        this.registerButton('btn-start-game', this._onStartGameClick);
         this.registerButton('btn-sandbox', this._onSandboxClick);
         this.registerButton('btn-quit', this._onQuitClick);
 
@@ -27,11 +28,19 @@ export class MainMenu extends MenuBase {
     }
 
     /**
-     * Handle Sandbox button click
+     * Handle Start Game button click - starts parkour mode
+     */
+    _onStartGameClick() {
+        console.log('[MainMenu] Start Game clicked - starting parkour mode');
+        gameStateManager.startPlaying(GameMode.PARKOUR);
+    }
+
+    /**
+     * Handle Sandbox button click - starts sandbox mode
      */
     _onSandboxClick() {
-        console.log('[MainMenu] Sandbox clicked');
-        gameStateManager.startPlaying();
+        console.log('[MainMenu] Sandbox clicked - starting sandbox mode');
+        gameStateManager.startPlaying(GameMode.SANDBOX);
     }
 
     /**
@@ -57,6 +66,7 @@ export class MainMenu extends MenuBase {
         if (!content) return;
 
         // Unregister current buttons
+        this.unregisterButton('btn-start-game');
         this.unregisterButton('btn-sandbox');
         this.unregisterButton('btn-quit');
 
@@ -93,13 +103,15 @@ export class MainMenu extends MenuBase {
             MenuTemplates.subtitle('A Three.js Experience'),
             MenuTemplates.divider(),
             MenuTemplates.buttonContainer([
-                MenuTemplates.button({ id: 'btn-sandbox', icon: '▶', text: 'SANDBOX' }),
+                MenuTemplates.button({ id: 'btn-start-game', icon: '▶', text: 'START GAME' }),
+                MenuTemplates.button({ id: 'btn-sandbox', icon: '◈', text: 'SANDBOX' }),
                 MenuTemplates.button({ id: 'btn-quit', icon: '✕', text: 'QUIT', secondary: true })
             ].join('')),
             MenuTemplates.footer()
         ].join('');
 
         // Re-register main buttons
+        this.registerButton('btn-start-game', this._onStartGameClick);
         this.registerButton('btn-sandbox', this._onSandboxClick);
         this.registerButton('btn-quit', this._onQuitClick);
     }

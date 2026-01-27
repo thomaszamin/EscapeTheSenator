@@ -118,6 +118,8 @@ export const Events = {
     PLAYER_SPRINT_START: 'player:sprint:start',
     PLAYER_SPRINT_END: 'player:sprint:end',
     PLAYER_MOVE: 'player:move',
+    PLAYER_DEATH: 'player:death',
+    PLAYER_RESPAWN: 'player:respawn',
     
     // Game state events
     GAME_START: 'game:start',
@@ -133,6 +135,11 @@ export const Events = {
     
     // World events
     WORLD_LOADED: 'world:loaded',
+    
+    // Parkour events
+    PARKOUR_CHUNK_GENERATED: 'parkour:chunk:generated',
+    PARKOUR_CHUNK_DISPOSED: 'parkour:chunk:disposed',
+    PARKOUR_RESTART: 'parkour:restart',
     
     // Debug events
     DEBUG_TOGGLE: 'debug:toggle',
