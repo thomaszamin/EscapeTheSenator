@@ -832,8 +832,10 @@ export class Player {
         // Check if standing on an obstacle (using raycast result)
         const groundResult = this.getGroundHeightWithInfo();
         
-        if (groundResult.height !== null && this.position.y <= groundResult.height + this.currentHeight + 0.1) {
-            this.position.y = groundResult.height + this.currentHeight;
+        // groundResult.height is the Y position of the platform surface
+        // this.position.y is the feet/base position, so it should equal groundResult.height when on platform
+        if (groundResult.height !== null && this.position.y <= groundResult.height + 0.1) {
+            this.position.y = groundResult.height;
             
             // Check for bounce pad
             if (groundResult.isBouncy && this.velocity.y <= 0) {
