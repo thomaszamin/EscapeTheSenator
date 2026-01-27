@@ -118,6 +118,10 @@ export const Events = {
     PLAYER_SPRINT_START: 'player:sprint:start',
     PLAYER_SPRINT_END: 'player:sprint:end',
     PLAYER_MOVE: 'player:move',
+    PLAYER_CROUCH_START: 'player:crouch:start',
+    PLAYER_CROUCH_END: 'player:crouch:end',
+    PLAYER_SLIDE_START: 'player:slide:start',
+    PLAYER_SLIDE_END: 'player:slide:end',
     
     // Game state events
     GAME_START: 'game:start',

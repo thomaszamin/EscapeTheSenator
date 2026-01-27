@@ -21,6 +21,14 @@ export class Player {
         this.isSprinting = false;
         this.isMoving = false;
         
+        // Crouch/Slide state
+        this.isCrouching = false;
+        this.isSliding = false;
+        this.slideTime = 0;           // Current slide duration
+        this.slideCooldown = 0;       // Cooldown before next slide
+        this.slideDirection = new THREE.Vector3(); // Direction of slide
+        this.currentHeight = PLAYER.HEIGHT;        // Current player height (for collision)
+        
         // Jump mechanics
         this.canJump = true;
         this.jumpCooldown = 0;
@@ -34,8 +42,13 @@ export class Player {
         this._moveDirection = new THREE.Vector3();
         this._tempVector = new THREE.Vector3();
         
-        // Sprint tracking for events
+        // Sprint tracking for events and slide requirement
         this._wasSprinting = false;
+        this.sprintTime = 0;  // How long player has been continuously sprinting
+        
+        // Crouch/Slide tracking for events
+        this._wasCrouching = false;
+        this._wasSliding = false;
         
         // Collision detection
         this.obstacles = [];
@@ -68,6 +81,7 @@ export class Player {
         this.updateTimers(deltaTime);
         
         // Process input and movement
+        this.handleCrouchSlide(deltaTime);
         this.handleMovement(deltaTime);
         this.handleJump(deltaTime);
         
@@ -83,11 +97,13 @@ export class Player {
         
         // Update camera
         this.camera.updateRotation(deltaTime);
+        this.camera.updateEyeHeight(deltaTime);
         this.camera.updateHeadBob(this.isMoving, this.isSprinting, this.isGrounded, this.isWallRunning, deltaTime);
         this.camera.updatePosition(this.position, deltaTime);
         
-        // Emit sprint events
+        // Emit state events
         this.checkSprintEvents();
+        this.checkCrouchSlideEvents();
     }
 
     /**
@@ -109,22 +125,47 @@ export class Player {
         if (this.wallRunCooldown > 0) {
             this.wallRunCooldown -= deltaTime;
         }
+        
+        if (this.slideCooldown > 0) {
+            this.slideCooldown -= deltaTime;
+        }
     }
 
     /**
      * Handle WASD movement input
      */
     handleMovement(deltaTime) {
+        // No movement control while sliding (momentum-based)
+        if (this.isSliding) {
+            this.isMoving = true; // Consider sliding as moving for head bob
+            this.isSprinting = false;
+            return;
+        }
+        
         const input = inputManager.getMovementInput();
         
         // Check if moving
         this.isMoving = input.x !== 0 || input.z !== 0;
         
-        // Check sprint
-        this.isSprinting = this.isMoving && inputManager.isAction('SPRINT');
+        // Check sprint (can't sprint while crouching)
+        this.isSprinting = this.isMoving && inputManager.isAction('SPRINT') && !this.isCrouching;
         
-        // Get movement speed
-        const speed = this.isSprinting ? PLAYER.RUN_SPEED : PLAYER.WALK_SPEED;
+        // Track continuous sprint time for slide requirement
+        if (this.isSprinting) {
+            this.sprintTime += deltaTime;
+        } else {
+            this.sprintTime = 0;
+        }
+        
+        // Get movement speed based on state
+        let speed;
+        if (this.isCrouching) {
+            speed = PLAYER.CROUCH_SPEED;
+        } else if (this.isSprinting) {
+            speed = PLAYER.RUN_SPEED;
+        } else {
+            speed = PLAYER.WALK_SPEED;
+        }
         
         // Get camera-relative directions
         const forward = this.camera.getForwardDirection();
@@ -216,7 +257,213 @@ export class Player {
         this.coyoteTime = 0;
         this.jumpBufferTime = 0;
         
+        // Cancel crouch/slide on jump
+        if (this.isCrouching || this.isSliding) {
+            this.endCrouchSlide();
+        }
+        
         globalEvents.emit(Events.PLAYER_JUMP);
+    }
+
+    /**
+     * Handle crouch and slide input/state
+     */
+    handleCrouchSlide(deltaTime) {
+        const crouchPressed = inputManager.isActionPressed('CROUCH');
+        const crouchHeld = inputManager.isAction('CROUCH');
+        
+        // Can't crouch/slide while wall running
+        if (this.isWallRunning) {
+            if (this.isSliding) {
+                this.endSlide();
+            }
+            return;
+        }
+        
+        // Handle air state - slides can continue briefly in air (for small bumps)
+        // but can't start new crouch/slide while airborne
+        if (!this.isGrounded && !this.isSliding && !this.isCrouching) {
+            return;
+        }
+        
+        // Handle sliding
+        if (this.isSliding) {
+            this.slideTime += deltaTime;
+            
+            // Apply slide velocity with momentum-based friction
+            const slideSpeed = Math.sqrt(this.velocity.x ** 2 + this.velocity.z ** 2);
+            
+            // Dynamic friction: faster speeds = lower friction for longer slides
+            // At high speeds, friction is reduced; at low speeds, friction increases
+            const momentumFactor = Math.max(0.3, slideSpeed / PLAYER.SLIDE_SPEED);
+            const effectiveFriction = PLAYER.SLIDE_FRICTION / momentumFactor;
+            
+            // Decelerate slide with momentum-based friction
+            const decelAmount = effectiveFriction * deltaTime;
+            const newSpeed = Math.max(0, slideSpeed - decelAmount);
+            
+            if (newSpeed > 0 && slideSpeed > 0) {
+                const ratio = newSpeed / slideSpeed;
+                this.velocity.x *= ratio;
+                this.velocity.z *= ratio;
+            }
+            
+            // End slide if too slow - transition to crouch
+            if (newSpeed < PLAYER.SLIDE_MIN_SPEED) {
+                this.endSlide();
+                this.startCrouch(); // Always transition to crouch after slide
+            }
+            
+            // Cancel slide early ONLY by pressing crouch again
+            if (crouchPressed) {
+                this.endSlide();
+                // Stand up if possible, otherwise stay crouched
+                if (!this.canStandUp()) {
+                    this.startCrouch();
+                }
+            }
+            
+            return;
+        }
+        
+        // Start slide: sprinting for minimum duration + press crouch + not on cooldown
+        const hasSprintedEnough = this.sprintTime >= PLAYER.SLIDE_MIN_SPRINT_TIME;
+        if (crouchPressed && this.isSprinting && hasSprintedEnough && this.slideCooldown <= 0 && this.isGrounded) {
+            this.startSlide();
+            return;
+        }
+        
+        // Toggle crouch on press (if not starting a slide)
+        if (crouchPressed && this.isGrounded) {
+            if (this.isCrouching) {
+                // Try to stand up (check for obstacles above)
+                if (this.canStandUp()) {
+                    this.endCrouch();
+                }
+            } else {
+                this.startCrouch();
+            }
+        }
+        
+        // Update camera target height based on state
+        this.updateCrouchHeight();
+    }
+
+    /**
+     * Start crouching
+     */
+    startCrouch() {
+        this.isCrouching = true;
+        this.currentHeight = PLAYER.CROUCH_HEIGHT;
+        this.camera.setTargetEyeHeight(PLAYER.CROUCH_EYE_HEIGHT);
+    }
+
+    /**
+     * End crouching
+     */
+    endCrouch() {
+        this.isCrouching = false;
+        this.currentHeight = PLAYER.HEIGHT;
+        this.camera.setTargetEyeHeight(PLAYER.EYE_HEIGHT);
+    }
+
+    /**
+     * Start sliding
+     */
+    startSlide() {
+        this.isSliding = true;
+        this.isCrouching = false; // Sliding is separate from crouching
+        this.slideTime = 0;
+        this.currentHeight = PLAYER.CROUCH_HEIGHT;
+        this.camera.setTargetEyeHeight(PLAYER.CROUCH_EYE_HEIGHT);
+        
+        // Capture current movement direction for slide
+        const speed = this.getCurrentSpeed();
+        if (speed > 0) {
+            this.slideDirection.set(this.velocity.x, 0, this.velocity.z).normalize();
+            
+            // Momentum-based slide: faster entry = faster slide
+            // Add a boost proportional to current speed above walk speed
+            const momentumBoost = Math.max(0, (speed - PLAYER.WALK_SPEED) * 0.3);
+            const slideSpeed = Math.max(speed, PLAYER.SLIDE_SPEED) + momentumBoost;
+            
+            this.velocity.x = this.slideDirection.x * slideSpeed;
+            this.velocity.z = this.slideDirection.z * slideSpeed;
+        } else {
+            // Slide in facing direction if stationary
+            const forward = this.camera.getForwardDirection();
+            this.slideDirection.copy(forward);
+            this.velocity.x = forward.x * PLAYER.SLIDE_SPEED;
+            this.velocity.z = forward.z * PLAYER.SLIDE_SPEED;
+        }
+        
+        globalEvents.emit(Events.PLAYER_SLIDE_START);
+    }
+
+    /**
+     * End sliding
+     */
+    endSlide() {
+        this.isSliding = false;
+        this.slideCooldown = PLAYER.SLIDE_COOLDOWN;
+        
+        globalEvents.emit(Events.PLAYER_SLIDE_END);
+    }
+
+    /**
+     * End both crouch and slide states
+     */
+    endCrouchSlide() {
+        if (this.isSliding) {
+            this.endSlide();
+        }
+        if (this.isCrouching) {
+            this.endCrouch();
+        }
+    }
+
+    /**
+     * Update camera height based on crouch/slide state
+     */
+    updateCrouchHeight() {
+        if (this.isSliding || this.isCrouching) {
+            this.currentHeight = PLAYER.CROUCH_HEIGHT;
+            this.camera.setTargetEyeHeight(PLAYER.CROUCH_EYE_HEIGHT);
+        } else {
+            this.currentHeight = PLAYER.HEIGHT;
+            this.camera.setTargetEyeHeight(PLAYER.EYE_HEIGHT);
+        }
+    }
+
+    /**
+     * Check if player can stand up from crouch (no obstacle above)
+     */
+    canStandUp() {
+        if (this.obstacles.length === 0) return true;
+        
+        const halfWidth = PLAYER.RADIUS;
+        const standBox = new THREE.Box3();
+        
+        // Check the space between crouch height and stand height
+        standBox.min.set(
+            this.position.x - halfWidth,
+            this.position.y - PLAYER.CROUCH_HEIGHT,
+            this.position.z - halfWidth
+        );
+        standBox.max.set(
+            this.position.x + halfWidth,
+            this.position.y - PLAYER.CROUCH_HEIGHT + PLAYER.HEIGHT,
+            this.position.z + halfWidth
+        );
+        
+        for (const obstacle of this.obstacles) {
+            const obstacleBox = new THREE.Box3().setFromObject(obstacle);
+            if (standBox.intersectsBox(obstacleBox)) {
+                return false; // Can't stand up, obstacle in the way
+            }
+        }
+        
+        return true;
     }
 
     /**
@@ -346,7 +593,7 @@ export class Player {
             const checkBox = new THREE.Box3();
             checkBox.min.set(
                 this.position.x - halfWidth + (dir.x > 0 ? halfWidth : dir.x < 0 ? -wallCheckDistance : 0),
-                this.position.y - PLAYER.HEIGHT + 0.5, // Check mid-body
+                this.position.y - this.currentHeight + 0.5, // Check mid-body
                 this.position.z - halfWidth + (dir.z > 0 ? halfWidth : dir.z < 0 ? -wallCheckDistance : 0)
             );
             checkBox.max.set(
@@ -437,9 +684,10 @@ export class Player {
         const halfWidth = PLAYER.RADIUS;
         const stepHeight = 0.35; // Height we can step over / stand on
         
+        // Use currentHeight which changes when crouching
         this._playerBox.min.set(
             this.position.x - halfWidth,
-            this.position.y - PLAYER.HEIGHT + stepHeight, // Start above feet
+            this.position.y - this.currentHeight + stepHeight, // Start above feet
             this.position.z - halfWidth
         );
         this._playerBox.max.set(
@@ -467,9 +715,9 @@ export class Player {
     checkGround() {
         const wasGrounded = this.isGrounded;
         
-        // Check floor at y = 0
-        if (this.position.y <= PLAYER.HEIGHT) {
-            this.position.y = PLAYER.HEIGHT;
+        // Check floor at y = 0 (use currentHeight for crouch)
+        if (this.position.y <= this.currentHeight) {
+            this.position.y = this.currentHeight;
             
             if (this.velocity.y < 0) {
                 this.velocity.y = 0;
@@ -488,8 +736,8 @@ export class Player {
         // Check if standing on an obstacle
         const groundY = this.getGroundHeight();
         
-        if (groundY !== null && this.position.y <= groundY + PLAYER.HEIGHT + 0.1) {
-            this.position.y = groundY + PLAYER.HEIGHT;
+        if (groundY !== null && this.position.y <= groundY + this.currentHeight + 0.1) {
+            this.position.y = groundY + this.currentHeight;
             
             if (this.velocity.y < 0) {
                 this.velocity.y = 0;
@@ -528,12 +776,12 @@ export class Player {
         const feetBox = new THREE.Box3();
         feetBox.min.set(
             this.position.x - halfWidth,
-            this.position.y - PLAYER.HEIGHT - 0.2, // Check slightly below feet
+            this.position.y - this.currentHeight - 0.2, // Check slightly below feet
             this.position.z - halfWidth
         );
         feetBox.max.set(
             this.position.x + halfWidth,
-            this.position.y - PLAYER.HEIGHT + 0.1,
+            this.position.y - this.currentHeight + 0.1,
             this.position.z + halfWidth
         );
         
@@ -565,6 +813,22 @@ export class Player {
     }
 
     /**
+     * Check and emit crouch/slide state change events
+     */
+    checkCrouchSlideEvents() {
+        // Crouch events
+        if (this.isCrouching && !this._wasCrouching) {
+            globalEvents.emit(Events.PLAYER_CROUCH_START);
+        } else if (!this.isCrouching && this._wasCrouching) {
+            globalEvents.emit(Events.PLAYER_CROUCH_END);
+        }
+        this._wasCrouching = this.isCrouching;
+        
+        // Slide events are emitted in startSlide/endSlide directly
+        this._wasSliding = this.isSliding;
+    }
+
+    /**
      * Get current movement speed
      */
     getCurrentSpeed() {
@@ -589,6 +853,8 @@ export class Player {
             speed: this.getCurrentSpeed().toFixed(2),
             isGrounded: this.isGrounded,
             isSprinting: this.isSprinting,
+            isCrouching: this.isCrouching,
+            isSliding: this.isSliding,
             isWallRunning: this.isWallRunning,
             wallRunTime: this.wallRunTime.toFixed(1),
         };
