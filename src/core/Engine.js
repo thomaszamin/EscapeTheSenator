@@ -214,8 +214,10 @@ export class Engine {
                 
             case GameState.PLAYING:
                 this.isPaused = false;
-                // Setup the correct world based on game mode
-                this.setupGameMode();
+                // Only setup game mode when coming from main menu (not from pause)
+                if (from === GameState.MAIN_MENU) {
+                    this.setupGameMode();
+                }
                 // Request pointer lock when entering play mode
                 if (!inputManager.isPointerLocked()) {
                     inputManager.requestPointerLock();
