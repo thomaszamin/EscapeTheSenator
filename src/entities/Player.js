@@ -12,8 +12,8 @@ import { FirstPersonCamera } from './FirstPersonCamera.js';
 
 export class Player {
     constructor(camera) {
-        // Position and physics
-        this.position = new THREE.Vector3(0, PLAYER.HEIGHT, 0);
+        // Position and physics (position.y = feet/base position, camera is at position.y + EYE_HEIGHT)
+        this.position = new THREE.Vector3(0, 0, 0);
         this.velocity = new THREE.Vector3(0, 0, 0);
         
         // Movement state
@@ -40,6 +40,8 @@ export class Player {
         // Collision detection
         this.obstacles = [];
         this._playerBox = new THREE.Box3();
+        this._raycaster = new THREE.Raycaster();
+        this._downDirection = new THREE.Vector3(0, -1, 0);
         
         // Wall running
         this.isWallRunning = false;
@@ -323,15 +325,14 @@ export class Player {
     }
 
     /**
-     * Detect if player is near a wall
+     * Detect if player is near a wall using raycasting
      * @returns {Object} { isNearWall: boolean, normal: THREE.Vector3 }
      */
     detectWall() {
         const result = { isNearWall: false, normal: new THREE.Vector3() };
         if (this.obstacles.length === 0) return result;
         
-        const halfWidth = PLAYER.RADIUS;
-        const wallCheckDistance = 0.3; // How close to wall to trigger
+        const wallCheckDistance = PLAYER.RADIUS + PLAYER.HEIGHT * 0.15; // Scales with player height (was 0.6)
         
         // Check all four directions for walls
         const directions = [
@@ -341,26 +342,34 @@ export class Player {
             new THREE.Vector3(0, 0, -1),
         ];
         
+        // Check at mid-body height (use full height for better wall detection range)
+        const feetY = this.position.y;
+        const checkHeight = feetY + PLAYER.HEIGHT * 0.5; // Mid-body based on full height
+        const origin = new THREE.Vector3(this.position.x, checkHeight, this.position.z);
+        
         for (const dir of directions) {
-            // Create a box slightly extended in this direction
-            const checkBox = new THREE.Box3();
-            checkBox.min.set(
-                this.position.x - halfWidth + (dir.x > 0 ? halfWidth : dir.x < 0 ? -wallCheckDistance : 0),
-                this.position.y - PLAYER.HEIGHT + 0.5, // Check mid-body
-                this.position.z - halfWidth + (dir.z > 0 ? halfWidth : dir.z < 0 ? -wallCheckDistance : 0)
-            );
-            checkBox.max.set(
-                this.position.x + halfWidth + (dir.x > 0 ? wallCheckDistance : dir.x < 0 ? -halfWidth : 0),
-                this.position.y - 0.5,
-                this.position.z + halfWidth + (dir.z > 0 ? wallCheckDistance : dir.z < 0 ? -halfWidth : 0)
-            );
+            this._raycaster.set(origin, dir);
+            this._raycaster.far = wallCheckDistance;
             
-            for (const obstacle of this.obstacles) {
-                const obstacleBox = new THREE.Box3().setFromObject(obstacle);
+            const intersects = this._raycaster.intersectObjects(this.obstacles, false);
+            
+            if (intersects.length > 0) {
+                // Check that the wall is tall enough (not just a low platform)
+                const hitPoint = intersects[0].point;
+                const hitNormal = intersects[0].face ? intersects[0].face.normal.clone() : dir.clone().negate();
                 
-                if (checkBox.intersectsBox(obstacleBox)) {
+                // Transform normal to world space if needed
+                if (intersects[0].object.matrixWorld) {
+                    hitNormal.transformDirection(intersects[0].object.matrixWorld);
+                }
+                
+                // Only consider it a wall if the surface is mostly vertical
+                if (Math.abs(hitNormal.y) < 0.5) {
                     result.isNearWall = true;
-                    result.normal.copy(dir).negate(); // Normal points away from wall
+                    result.normal.copy(hitNormal);
+                    // Ensure normal is horizontal
+                    result.normal.y = 0;
+                    result.normal.normalize();
                     return result;
                 }
             }
@@ -400,8 +409,17 @@ export class Player {
      * Apply velocity to position with collision detection
      */
     applyVelocity(deltaTime) {
-        // Apply Y movement (vertical) separately
-        this.position.y += this.velocity.y * deltaTime;
+        // Apply Y movement (vertical) with collision check for upward movement
+        const moveY = this.velocity.y * deltaTime;
+        if (moveY !== 0) {
+            this.position.y += moveY;
+            
+            // Check for ceiling/overhead collision when moving up
+            if (moveY > 0 && this.checkCeilingCollision()) {
+                this.position.y -= moveY;
+                this.velocity.y = 0;
+            }
+        }
         
         // Apply X movement with collision check
         const moveX = this.velocity.x * deltaTime;
@@ -425,36 +443,103 @@ export class Player {
     }
 
     /**
+     * Check for ceiling/overhead collision when moving upward
+     * @returns {boolean} True if collision detected above player
+     */
+    checkCeilingCollision() {
+        if (this.obstacles.length === 0) return false;
+        
+        // Camera is at position.y + EYE_HEIGHT, so check from camera height upward
+        // The actual top of the player's head/collision volume should be at camera height + some offset
+        const cameraY = this.position.y + PLAYER.EYE_HEIGHT;
+        const headTopY = cameraY + (PLAYER.HEIGHT - PLAYER.EYE_HEIGHT); // Top of head above camera
+        
+        const checkPoints = [
+            new THREE.Vector3(this.position.x, headTopY, this.position.z),
+            new THREE.Vector3(this.position.x + PLAYER.RADIUS * 0.7, headTopY, this.position.z),
+            new THREE.Vector3(this.position.x - PLAYER.RADIUS * 0.7, headTopY, this.position.z),
+            new THREE.Vector3(this.position.x, headTopY, this.position.z + PLAYER.RADIUS * 0.7),
+            new THREE.Vector3(this.position.x, headTopY, this.position.z - PLAYER.RADIUS * 0.7),
+        ];
+        
+        const upDirection = new THREE.Vector3(0, 1, 0);
+        const checkDistance = PLAYER.HEIGHT * 0.15; // Check distance scales with player height
+        
+        for (const point of checkPoints) {
+            this._raycaster.set(point, upDirection);
+            this._raycaster.far = checkDistance;
+            
+            const intersects = this._raycaster.intersectObjects(this.obstacles, false);
+            
+            if (intersects.length > 0) {
+                // Hit something above us
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    /**
      * Check if player collides with any obstacle (horizontal movement)
-     * Uses a slightly elevated box to allow walking on surfaces
+     * Uses raycasting for more accurate collision with rotated objects
      * @returns {boolean} True if collision detected
      */
     checkCollision() {
         if (this.obstacles.length === 0) return false;
         
-        // Create player bounding box, but start above step height
-        // This allows player to walk on obstacles without the surface blocking them
-        const halfWidth = PLAYER.RADIUS;
-        const stepHeight = 0.35; // Height we can step over / stand on
+        const stepHeight = PLAYER.HEIGHT * 0.25; // Height we can step over / stand on (scales with player height)
         
-        this._playerBox.min.set(
-            this.position.x - halfWidth,
-            this.position.y - PLAYER.HEIGHT + stepHeight, // Start above feet
-            this.position.z - halfWidth
-        );
-        this._playerBox.max.set(
-            this.position.x + halfWidth,
-            this.position.y,
-            this.position.z + halfWidth
-        );
+        // Cast rays in the movement direction from multiple heights
+        // Camera is at position.y + EYE_HEIGHT, so we need to account for that
+        // Feet are at position.y (since position.y represents feet/base position)
+        const feetY = this.position.y;
+        const cameraY = this.position.y + PLAYER.EYE_HEIGHT;
+        const headTopY = cameraY + (PLAYER.HEIGHT - PLAYER.EYE_HEIGHT); // Top of head above camera
         
-        // Check against all obstacles
-        for (const obstacle of this.obstacles) {
-            // Get world bounding box of obstacle
-            const obstacleBox = new THREE.Box3().setFromObject(obstacle);
-            
-            if (this._playerBox.intersectsBox(obstacleBox)) {
-                return true;
+        // Check at dense intervals from above step height to top of head
+        // Heights scale proportionally with player height
+        // Use many check points with small gaps to prevent objects from slipping through
+        const checkHeights = [];
+        const checkCount = Math.ceil(PLAYER.HEIGHT * 2); // More checks for taller players
+        const startHeight = feetY + stepHeight + PLAYER.HEIGHT * 0.05;
+        const endHeight = headTopY;
+        const heightRange = endHeight - startHeight;
+        
+        // Generate evenly spaced check points
+        for (let i = 0; i <= checkCount; i++) {
+            const t = i / checkCount;
+            const height = startHeight + heightRange * t;
+            checkHeights.push(height);
+        }
+        
+        // Check in 8 directions (cardinal + diagonal) for better coverage
+        const sqrt2 = Math.SQRT1_2;
+        const directions = [
+            new THREE.Vector3(1, 0, 0),
+            new THREE.Vector3(-1, 0, 0),
+            new THREE.Vector3(0, 0, 1),
+            new THREE.Vector3(0, 0, -1),
+            new THREE.Vector3(sqrt2, 0, sqrt2),
+            new THREE.Vector3(sqrt2, 0, -sqrt2),
+            new THREE.Vector3(-sqrt2, 0, sqrt2),
+            new THREE.Vector3(-sqrt2, 0, -sqrt2),
+        ];
+        
+        const checkDistance = PLAYER.RADIUS + PLAYER.HEIGHT * 0.0375; // Scales with player height (was 0.15)
+        
+        for (const height of checkHeights) {
+            for (const dir of directions) {
+                const origin = new THREE.Vector3(this.position.x, height, this.position.z);
+                this._raycaster.set(origin, dir);
+                this._raycaster.far = checkDistance;
+                
+                const intersects = this._raycaster.intersectObjects(this.obstacles, false);
+                
+                if (intersects.length > 0) {
+                    // Any hit above step height is a wall we can't walk through
+                    return true;
+                }
             }
         }
         
@@ -467,9 +552,9 @@ export class Player {
     checkGround() {
         const wasGrounded = this.isGrounded;
         
-        // Check floor at y = 0
-        if (this.position.y <= PLAYER.HEIGHT) {
-            this.position.y = PLAYER.HEIGHT;
+        // Check floor at y = 0 (position.y represents feet/base position)
+        if (this.position.y <= 0) {
+            this.position.y = 0;
             
             if (this.velocity.y < 0) {
                 this.velocity.y = 0;
@@ -485,11 +570,20 @@ export class Player {
             return;
         }
         
-        // Check if standing on an obstacle
-        const groundY = this.getGroundHeight();
+        // Check if standing on an obstacle (using raycast result)
+        const groundResult = this.getGroundHeightWithInfo();
         
-        if (groundY !== null && this.position.y <= groundY + PLAYER.HEIGHT + 0.1) {
-            this.position.y = groundY + PLAYER.HEIGHT;
+        if (groundResult.height !== null && this.position.y <= groundResult.height + PLAYER.HEIGHT * 0.0375) {
+            this.position.y = groundResult.height;
+            
+            // Check for bounce pad
+            if (groundResult.isBouncy && this.velocity.y <= 0) {
+                // Apply bounce force
+                this.velocity.y = groundResult.bounceForce;
+                this.isGrounded = false;
+                globalEvents.emit(Events.PLAYER_JUMP);
+                return;
+            }
             
             if (this.velocity.y < 0) {
                 this.velocity.y = 0;
@@ -515,41 +609,64 @@ export class Player {
     }
 
     /**
-     * Get the height of the ground/obstacle beneath the player
+     * Get the height of the ground/obstacle beneath the player using raycasting
+     * This properly handles rotated objects like ramps
      * @returns {number|null} The Y position of the ground, or null if none found
      */
     getGroundHeight() {
-        if (this.obstacles.length === 0) return null;
+        const result = this.getGroundHeightWithInfo();
+        return result.height;
+    }
+
+    /**
+     * Get ground height with additional info (bounce pads, etc.)
+     * @returns {Object} { height: number|null, isBouncy: boolean, bounceForce: number }
+     */
+    getGroundHeightWithInfo() {
+        const result = { height: null, isBouncy: false, bounceForce: 0 };
+        if (this.obstacles.length === 0) return result;
         
-        const halfWidth = PLAYER.RADIUS;
-        let highestGround = null;
+        let highestHit = null;
         
-        // Create a thin box at player's feet extending downward
-        const feetBox = new THREE.Box3();
-        feetBox.min.set(
-            this.position.x - halfWidth,
-            this.position.y - PLAYER.HEIGHT - 0.2, // Check slightly below feet
-            this.position.z - halfWidth
-        );
-        feetBox.max.set(
-            this.position.x + halfWidth,
-            this.position.y - PLAYER.HEIGHT + 0.1,
-            this.position.z + halfWidth
-        );
+        // Cast multiple rays from player's feet area for better coverage
+        // position.y represents feet/base position
+        const feetY = this.position.y;
+        const rayStartY = feetY + PLAYER.HEIGHT * 0.25; // Start rays proportionally above feet
         
-        for (const obstacle of this.obstacles) {
-            const obstacleBox = new THREE.Box3().setFromObject(obstacle);
+        const rayOrigins = [
+            new THREE.Vector3(this.position.x, rayStartY, this.position.z),
+            new THREE.Vector3(this.position.x + PLAYER.RADIUS * 0.7, rayStartY, this.position.z),
+            new THREE.Vector3(this.position.x - PLAYER.RADIUS * 0.7, rayStartY, this.position.z),
+            new THREE.Vector3(this.position.x, rayStartY, this.position.z + PLAYER.RADIUS * 0.7),
+            new THREE.Vector3(this.position.x, rayStartY, this.position.z - PLAYER.RADIUS * 0.7),
+        ];
+        
+        for (const origin of rayOrigins) {
+            this._raycaster.set(origin, this._downDirection);
+            this._raycaster.far = PLAYER.HEIGHT * 0.75; // Check distance scales with player height (covers step-up scenarios)
             
-            // Check if player is above this obstacle and within horizontal bounds
-            if (feetBox.intersectsBox(obstacleBox)) {
-                const topY = obstacleBox.max.y;
-                if (highestGround === null || topY > highestGround) {
-                    highestGround = topY;
+            const intersects = this._raycaster.intersectObjects(this.obstacles, false);
+            
+            if (intersects.length > 0) {
+                const hit = intersects[0];
+                const hitY = hit.point.y;
+                
+                if (result.height === null || hitY > result.height) {
+                    result.height = hitY;
+                    highestHit = hit;
                 }
             }
         }
         
-        return highestGround;
+        // Check if the highest ground is a bounce pad
+        if (highestHit && highestHit.object && highestHit.object.userData) {
+            if (highestHit.object.userData.isBouncy) {
+                result.isBouncy = true;
+                result.bounceForce = highestHit.object.userData.bounceForce || 18;
+            }
+        }
+        
+        return result;
     }
 
     /**

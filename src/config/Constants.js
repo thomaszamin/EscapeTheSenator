@@ -11,8 +11,8 @@ export const PHYSICS = {
 };
 
 export const PLAYER = {
-    HEIGHT: 1.8,
-    EYE_HEIGHT: 1.6,
+    HEIGHT: 4.0,
+    EYE_HEIGHT: 3.75,
     RADIUS: 0.4,
     
     // Movement speeds (units per second)

@@ -268,8 +268,8 @@ export class Engine {
             
             this.activeWorld = this.infiniteWorld;
             
-            // Reset player position for parkour
-            this.player.setPosition(0, 2, 5);
+            // Reset player position for parkour (feet at y=0, camera will be at y=EYE_HEIGHT)
+            this.player.setPosition(0, 0, 5);
             this.player.setObstacles(this.infiniteWorld.getObstacles());
             
         } else {
@@ -285,7 +285,7 @@ export class Engine {
             }
             
             this.activeWorld = this.world;
-            this.player.setPosition(0, 2, 0);
+            this.player.setPosition(0, 0, 0);
             this.player.setObstacles(this.world.getObstacles());
         }
     }
@@ -419,7 +419,7 @@ export class Engine {
         // Reset the infinite world and player
         if (this.infiniteWorld) {
             this.infiniteWorld.reset();
-            this.player.setPosition(0, 2, 5);
+            this.player.setPosition(0, 0, 5);
             this.player.setObstacles(this.infiniteWorld.getObstacles());
         }
         
