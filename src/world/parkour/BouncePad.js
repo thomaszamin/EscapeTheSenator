@@ -96,36 +96,34 @@ export class BouncePad {
     }
 
     /**
-     * Create upward arrow indicator
+     * Create upward arrow indicator (3D arrow pointing up in world Y)
      */
     createArrow() {
-        const arrowShape = new THREE.Shape();
-        const size = 0.5;
+        // Create a 3D arrow pointing upward using a cone for the head and cylinder for stem
+        const arrowGroup = new THREE.Group();
         
-        arrowShape.moveTo(0, size);
-        arrowShape.lineTo(size * 0.6, 0);
-        arrowShape.lineTo(size * 0.2, 0);
-        arrowShape.lineTo(size * 0.2, -size * 0.5);
-        arrowShape.lineTo(-size * 0.2, -size * 0.5);
-        arrowShape.lineTo(-size * 0.2, 0);
-        arrowShape.lineTo(-size * 0.6, 0);
-        arrowShape.closePath();
-        
-        const arrowGeometry = new THREE.ShapeGeometry(arrowShape);
-        
+        // Arrow head (cone pointing up)
+        const headGeometry = new THREE.ConeGeometry(0.25, 0.4, 8);
         const arrowMaterial = new THREE.MeshBasicMaterial({
             color: 0xffffff,
             transparent: true,
-            opacity: 0.8,
-            side: THREE.DoubleSide,
+            opacity: 0.9,
         });
+        const headMesh = new THREE.Mesh(headGeometry, arrowMaterial);
+        headMesh.position.y = 0.6;
+        arrowGroup.add(headMesh);
         
-        const arrowMesh = new THREE.Mesh(arrowGeometry, arrowMaterial);
-        arrowMesh.rotation.x = -Math.PI / 2;
-        arrowMesh.position.y = 0.12;
+        // Arrow stem (cylinder)
+        const stemGeometry = new THREE.CylinderGeometry(0.08, 0.08, 0.5, 8);
+        const stemMesh = new THREE.Mesh(stemGeometry, arrowMaterial);
+        stemMesh.position.y = 0.25;
+        arrowGroup.add(stemMesh);
         
-        this.group.add(arrowMesh);
-        this.arrowMesh = arrowMesh;
+        // Position the arrow group above the pad
+        arrowGroup.position.y = 0.2;
+        
+        this.group.add(arrowGroup);
+        this.arrowMesh = arrowGroup;
     }
 
     /**
@@ -157,9 +155,11 @@ export class BouncePad {
             this.glowMesh.scale.set(scale, scale, 1);
         }
         
-        // Float the arrow slightly
+        // Float and pulse the 3D arrow
         if (this.arrowMesh) {
-            this.arrowMesh.position.y = 0.12 + Math.sin(this.time * 3) * 0.05;
+            this.arrowMesh.position.y = 0.2 + Math.sin(this.time * 3) * 0.15;
+            const arrowScale = 1 + Math.sin(this.time * 4) * 0.1;
+            this.arrowMesh.scale.set(arrowScale, arrowScale, arrowScale);
         }
     }
 
@@ -176,8 +176,11 @@ export class BouncePad {
             this.glowMesh.material.dispose();
         }
         if (this.arrowMesh) {
-            this.arrowMesh.geometry.dispose();
-            this.arrowMesh.material.dispose();
+            // Arrow is now a group with children
+            this.arrowMesh.traverse((child) => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+            });
         }
     }
 }

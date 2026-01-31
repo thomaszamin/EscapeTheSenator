@@ -49,6 +49,7 @@ export class Engine {
         // State
         this.isRunning = false;
         this.isPaused = false;
+        this.deathCooldown = 0; // Prevent rapid death/respawn cycles
         
         // Bound methods
         this._update = this._update.bind(this);
@@ -268,9 +269,17 @@ export class Engine {
             
             this.activeWorld = this.infiniteWorld;
             
-            // Reset player position for parkour (feet at y=0, camera will be at y=EYE_HEIGHT)
-            this.player.setPosition(0, 0, 5);
+            // Reset player position for parkour - spawn on top of starting checkpoint
+            // Checkpoint is at y=0 with height 0.6, so top surface is at y=0.3
+            // Spawn player slightly above to ensure proper ground detection
+            this.player.setPosition(0, 0.5, 5);
             this.player.setObstacles(this.infiniteWorld.getObstacles());
+            
+            console.log('[Engine] PARKOUR MODE INITIALIZED');
+            console.log('[Engine] - InfiniteWorld:', !!this.infiniteWorld);
+            console.log('[Engine] - ActiveWorld:', !!this.activeWorld);
+            console.log('[Engine] - Player position:', this.player.position.x, this.player.position.y, this.player.position.z);
+            console.log('[Engine] - Death threshold: Y < -30');
             
         } else {
             // Sandbox mode
@@ -366,16 +375,35 @@ export class Engine {
             
             // Update active world (animations, etc.)
             if (this.activeWorld) {
-                if (gameStateManager.isParkourMode() && this.infiniteWorld) {
+                const isParkour = gameStateManager.isParkourMode();
+                const hasInfiniteWorld = !!this.infiniteWorld;
+                
+                if (isParkour && hasInfiniteWorld) {
                     // Update infinite world with player position
                     this.infiniteWorld.update(this.deltaTime, this.player.position);
                     
                     // Update obstacles as chunks change
                     this.player.setObstacles(this.infiniteWorld.getObstacles());
                     
-                    // Check for death
-                    if (this.infiniteWorld.checkDeath(this.player.position.y)) {
+                    // Update death cooldown
+                    if (this.deathCooldown > 0) {
+                        this.deathCooldown -= this.deltaTime;
+                    }
+                    
+                    // Log player Y position when low (for debugging)
+                    const playerY = this.player.position.y;
+                    if (playerY < -10) {
+                        console.log('[Engine] Player falling! Y:', playerY.toFixed(1), 
+                            'Cooldown:', this.deathCooldown.toFixed(2),
+                            'Death threshold: -30');
+                    }
+                    
+                    // Check for death (with cooldown to prevent rapid respawns)
+                    const isDead = this.infiniteWorld.checkDeath(playerY);
+                    if (this.deathCooldown <= 0 && isDead) {
+                        console.log('[Engine] DEATH DETECTED! Calling handleParkourDeath()');
                         this.handleParkourDeath();
+                        this.deathCooldown = 1.0; // 1 second cooldown after respawn
                     }
                 } else {
                     this.activeWorld.update(this.deltaTime);
@@ -413,16 +441,48 @@ export class Engine {
      * Handle player death in parkour mode
      */
     handleParkourDeath() {
-        console.log('[Engine] Player died in parkour mode');
+        console.log('');
+        console.log('╔══════════════════════════════════════════╗');
+        console.log('║           PLAYER DEATH TRIGGERED         ║');
+        console.log('╚══════════════════════════════════════════╝');
+        console.log('[Engine] Player fell at Y:', this.player.position.y.toFixed(2));
+        console.log('[Engine] Player was at position:', 
+            this.player.position.x.toFixed(2), 
+            this.player.position.y.toFixed(2), 
+            this.player.position.z.toFixed(2));
+        
         globalEvents.emit(Events.PLAYER_DEATH);
         
-        // Reset the infinite world and player
         if (this.infiniteWorld) {
-            this.infiniteWorld.reset();
-            this.player.setPosition(0, 0, 5);
-            this.player.setObstacles(this.infiniteWorld.getObstacles());
+            const hasCP = this.infiniteWorld.hasCheckpoint();
+            const respawnPos = this.infiniteWorld.getRespawnPosition();
+            const activeCP = this.infiniteWorld.activeCheckpoint;
+            
+            console.log('[Engine] Has saved checkpoint:', hasCP);
+            console.log('[Engine] Active checkpoint:', activeCP ? `#${activeCP.checkpointId}` : 'NONE');
+            console.log('[Engine] Respawn position:', 
+                respawnPos.x.toFixed(2), 
+                respawnPos.y.toFixed(2), 
+                respawnPos.z.toFixed(2));
+            
+            // Teleport player to respawn position
+            this.player.setPosition(respawnPos.x, respawnPos.y, respawnPos.z);
+            
+            // Reset player state
+            this.player.velocity.set(0, 0, 0);
+            this.player.isGrounded = true;
+            
+            console.log('[Engine] Player RESPAWNED at:', 
+                this.player.position.x.toFixed(2), 
+                this.player.position.y.toFixed(2), 
+                this.player.position.z.toFixed(2));
+        } else {
+            console.log('[Engine] ERROR: No infinite world! Using default spawn.');
+            this.player.setPosition(0, 0.5, 5);
         }
         
+        console.log('════════════════════════════════════════════');
+        console.log('');
         globalEvents.emit(Events.PLAYER_RESPAWN);
     }
 

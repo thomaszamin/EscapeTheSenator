@@ -21,6 +21,10 @@ export class InfiniteWorld {
         
         // State
         this.isLoaded = false;
+        
+        // Checkpoint system
+        this.activeCheckpoint = null;      // Currently active checkpoint
+        this.lastCheckpointPosition = null; // Respawn position
     }
 
     /**
@@ -40,7 +44,19 @@ export class InfiniteWorld {
         this.isLoaded = true;
         globalEvents.emit(Events.WORLD_LOADED);
         
-        console.log('[InfiniteWorld] Built successfully');
+        // Log checkpoint info and FORCE ACTIVATE the starting checkpoint
+        const checkpoints = this.chunkManager.generator.getCheckpoints();
+        console.log('[InfiniteWorld] Built successfully with', checkpoints.length, 'checkpoints');
+        if (checkpoints.length > 0) {
+            const first = checkpoints[0];
+            console.log('[InfiniteWorld] First checkpoint at:', 
+                first.group.position.x, first.group.position.y, first.group.position.z,
+                'size:', first.width, 'x', first.length);
+            
+            // FORCE ACTIVATE the starting checkpoint so player has a respawn point from the start
+            this.activateCheckpoint(first);
+            console.log('[InfiniteWorld] Starting checkpoint force-activated!');
+        }
     }
 
     /**
@@ -158,6 +174,9 @@ export class InfiniteWorld {
         // Update chunks based on player Z position
         this.chunkManager.update(playerPosition.z);
         
+        // Check for checkpoint activation
+        this.checkCheckpointCollision(playerPosition);
+        
         // Move directional light with player
         if (this.directionalLight) {
             this.directionalLight.position.z = playerPosition.z + LIGHTING.DIRECTIONAL_POSITION.z;
@@ -209,6 +228,108 @@ export class InfiniteWorld {
     }
 
     /**
+     * Activate a checkpoint
+     * @param {CheckpointPlatform} checkpoint - The checkpoint to activate
+     */
+    activateCheckpoint(checkpoint) {
+        if (this.activeCheckpoint === checkpoint) return;
+        
+        // Deactivate previous checkpoint
+        if (this.activeCheckpoint) {
+            this.activeCheckpoint.deactivate();
+        }
+        
+        // Activate new checkpoint
+        this.activeCheckpoint = checkpoint;
+        checkpoint.activate();
+        this.lastCheckpointPosition = checkpoint.getRespawnPosition();
+        
+        console.log('*** CHECKPOINT SAVED ***');
+        console.log(`[InfiniteWorld] Checkpoint #${checkpoint.checkpointId} - Respawn at:`, 
+            this.lastCheckpointPosition.x.toFixed(1), 
+            this.lastCheckpointPosition.y.toFixed(1), 
+            this.lastCheckpointPosition.z.toFixed(1));
+        
+        globalEvents.emit(Events.PARKOUR_CHECKPOINT, { 
+            id: checkpoint.checkpointId,
+            position: this.lastCheckpointPosition.clone()
+        });
+    }
+
+    /**
+     * Check if player is on a checkpoint
+     * @param {THREE.Vector3} playerPosition - Player position
+     */
+    checkCheckpointCollision(playerPosition) {
+        const checkpoints = this.chunkManager.generator.getCheckpoints();
+        
+        // Debug: Log checkpoint count occasionally
+        if (Math.random() < 0.005) {
+            console.log('[InfiniteWorld] Checking', checkpoints.length, 'checkpoints, player at:', 
+                playerPosition.x.toFixed(1), playerPosition.y.toFixed(1), playerPosition.z.toFixed(1));
+        }
+        
+        for (const checkpoint of checkpoints) {
+            // Get the actual world position from the group
+            const checkpointWorldPos = checkpoint.group.position;
+            
+            // Calculate Z distance (along the path)
+            const dz = Math.abs(playerPosition.z - checkpointWorldPos.z);
+            
+            // Check if player is within the checkpoint's Z range
+            // Use generous bounds - half the length plus some extra
+            const zInRange = dz < (checkpoint.length / 2 + 2);
+            
+            if (!zInRange) continue; // Skip if not even close in Z
+            
+            // Player Y is feet position, checkpoint surface is at checkpointWorldPos.y + height/2
+            const checkpointTopY = checkpointWorldPos.y + checkpoint.height / 2;
+            const playerFeetY = playerPosition.y;
+            const heightDiff = playerFeetY - checkpointTopY;
+            
+            // Check if player is on top of checkpoint (very generous height tolerance)
+            const isOnTop = heightDiff >= -1 && heightDiff < 5;
+            
+            // For X position, be VERY generous - any X position is fine as long as Z matches
+            // This ensures players coming from zigzag/stepping stones patterns still hit checkpoint
+            const dx = Math.abs(playerPosition.x - checkpointWorldPos.x);
+            const isNearX = dx < 15; // Very generous X tolerance
+            
+            if (isOnTop && isNearX) {
+                // Only log if this is a new activation
+                if (this.activeCheckpoint !== checkpoint) {
+                    console.log('[InfiniteWorld] CHECKPOINT ACTIVATED!', 
+                        'ID:', checkpoint.checkpointId,
+                        'dz:', dz.toFixed(1), 'dx:', dx.toFixed(1),
+                        'heightDiff:', heightDiff.toFixed(1));
+                }
+                this.activateCheckpoint(checkpoint);
+                break;
+            }
+        }
+    }
+
+    /**
+     * Get respawn position (last checkpoint or start)
+     * @returns {THREE.Vector3} Position to respawn at
+     */
+    getRespawnPosition() {
+        if (this.lastCheckpointPosition) {
+            return this.lastCheckpointPosition.clone();
+        }
+        // Default spawn position
+        return new THREE.Vector3(0, 0.5, 5);
+    }
+
+    /**
+     * Check if there's a valid checkpoint to respawn at
+     * @returns {boolean}
+     */
+    hasCheckpoint() {
+        return this.lastCheckpointPosition !== null;
+    }
+
+    /**
      * Get obstacles for collision detection
      */
     getObstacles() {
@@ -223,10 +344,24 @@ export class InfiniteWorld {
     }
 
     /**
-     * Reset the world for a new game
+     * Reset the world for a new game (full reset)
      */
     reset() {
+        // Clear checkpoint state
+        this.activeCheckpoint = null;
+        this.lastCheckpointPosition = null;
+        
+        // Reset chunk manager and checkpoint tracking
         this.chunkManager.reset();
+    }
+
+    /**
+     * Soft reset - respawn at checkpoint without regenerating world
+     * Used when player dies but has a checkpoint
+     */
+    softReset() {
+        // Keep checkpoint state, just let player respawn
+        // No world regeneration needed
     }
 
     /**

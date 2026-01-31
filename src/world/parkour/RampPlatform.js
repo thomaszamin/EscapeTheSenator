@@ -33,6 +33,7 @@ export class RampPlatform {
 
     /**
      * Build the ramp geometry
+     * Position represents the CENTER of the ramp (consistent with BasicPlatform)
      */
     build() {
         const rise = this.heightEnd - this.heightStart;
@@ -52,11 +53,8 @@ export class RampPlatform {
         
         this.mesh = new THREE.Mesh(geometry, material);
         this.mesh.rotation.x = -angle;
-        this.mesh.position.set(
-            0,
-            (this.heightStart + this.heightEnd) / 2,
-            this.length / 2
-        );
+        // Position mesh at local origin (0, 0, 0) so group position = center of ramp
+        this.mesh.position.set(0, 0, 0);
         this.mesh.castShadow = RENDER.ENABLE_SHADOWS;
         this.mesh.receiveShadow = RENDER.ENABLE_SHADOWS;
         
@@ -65,8 +63,13 @@ export class RampPlatform {
         // Add edge glow
         this.createEdgeGlow(angle, rampLength, thickness);
         
-        // Position and rotate
-        this.group.position.copy(this.position);
+        // Position at the center height between start and end
+        const centerY = (this.heightStart + this.heightEnd) / 2;
+        this.group.position.set(
+            this.position.x,
+            centerY,
+            this.position.z
+        );
         this.group.rotation.y = this.rotation;
     }
 
@@ -97,11 +100,8 @@ export class RampPlatform {
         
         const edgeMesh = new THREE.Line(edgeGeometry, edgeMaterial);
         edgeMesh.rotation.x = -angle;
-        edgeMesh.position.set(
-            0,
-            (this.heightStart + this.heightEnd) / 2,
-            this.length / 2
-        );
+        // Position at local origin to match mesh
+        edgeMesh.position.set(0, 0, 0);
         
         this.group.add(edgeMesh);
         this.edgeMesh = edgeMesh;

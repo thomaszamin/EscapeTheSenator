@@ -142,6 +142,11 @@ export const Events = {
     PARKOUR_CHUNK_GENERATED: 'parkour:chunk:generated',
     PARKOUR_CHUNK_DISPOSED: 'parkour:chunk:disposed',
     PARKOUR_RESTART: 'parkour:restart',
+    PARKOUR_CHECKPOINT: 'parkour:checkpoint',
+    
+    // Player life events
+    PLAYER_DEATH: 'player:death',
+    PLAYER_RESPAWN: 'player:respawn',
     
     // Debug events
     DEBUG_TOGGLE: 'debug:toggle',

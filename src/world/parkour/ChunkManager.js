@@ -207,6 +207,9 @@ export class ChunkManager {
         this.totalDistance = 0;
         this.allObstacles = [];
         
+        // Reset generator checkpoint tracking
+        this.generator.resetCheckpoints();
+        
         // Regenerate
         this.init();
     }

@@ -64,6 +64,9 @@ export class Player {
         this.wallNormal = new THREE.Vector3(); // Normal of the wall we're running on
         this.wallRunCooldown = 0; // Prevent immediate re-attach after jumping off
         this.wallRunSpeed = 10; // Speed while wall running
+        
+        // Respawn protection - prevents physics for a brief moment after teleport
+        this.respawnProtection = 0;
     }
 
     /**
@@ -79,6 +82,16 @@ export class Player {
      * @param {number} deltaTime - Time since last frame in seconds
      */
     update(deltaTime) {
+        // Check respawn protection - skip physics while protected
+        if (this.respawnProtection > 0) {
+            this.respawnProtection -= deltaTime;
+            
+            // Only update camera, skip all physics
+            this.camera.updateRotation(deltaTime);
+            this.camera.updatePosition(this.position, deltaTime);
+            return;
+        }
+        
         // Update timers
         this.updateTimers(deltaTime);
         
@@ -828,23 +841,8 @@ export class Player {
     checkGround() {
         const wasGrounded = this.isGrounded;
         
-        // Check floor at y = 0 (position.y represents feet/base position)
-        if (this.position.y <= 0) {
-            this.position.y = 0;
-            
-            if (this.velocity.y < 0) {
-                this.velocity.y = 0;
-            }
-            
-            this.isGrounded = true;
-            this.canJump = true;
-            this.coyoteTime = PLAYER.COYOTE_TIME;
-            
-            if (!wasGrounded) {
-                globalEvents.emit(Events.PLAYER_LAND);
-            }
-            return;
-        }
+        // NOTE: No hardcoded floor at Y=0 - in parkour mode, players can fall into the void
+        // and will be respawned at checkpoints by the Engine's death detection system
         
         // Check if standing on an obstacle (using raycast result)
         const groundResult = this.getGroundHeightWithInfo();
@@ -983,11 +981,48 @@ export class Player {
     }
 
     /**
-     * Teleport player to position
+     * Teleport player to position (resets all movement state)
      */
     setPosition(x, y, z) {
-        this.position.set(x, y, z);
-        this.velocity.set(0, 0, 0);
+        console.log('[Player] ===== TELEPORT =====');
+        console.log('[Player] Target position:', x, y, z);
+        console.log('[Player] Position BEFORE:', this.position.x, this.position.y, this.position.z);
+        
+        // Directly set position values
+        this.position.x = x;
+        this.position.y = y;
+        this.position.z = z;
+        
+        // Reset all physics
+        this.velocity.x = 0;
+        this.velocity.y = 0;
+        this.velocity.z = 0;
+        
+        // Reset ALL movement state
+        this.isGrounded = true;
+        this.isWallRunning = false;
+        this.isSliding = false;
+        this.isCrouching = false;
+        this.isMoving = false;
+        this.isSprinting = false;
+        this.coyoteTime = 0;
+        this.jumpBufferTime = 0;
+        this.wallRunTime = 0;
+        this.wallRunCooldown = 0;
+        this.slideCooldown = 0;
+        this.jumpCooldown = 0;
+        
+        // Enable respawn protection - prevents gravity/physics for a moment
+        this.respawnProtection = 0.5; // Half second of protection
+        
+        // Force camera to new position immediately
+        if (this.camera) {
+            this.camera.updatePosition(this.position, 0);
+        }
+        
+        console.log('[Player] Position AFTER:', this.position.x, this.position.y, this.position.z);
+        console.log('[Player] Respawn protection enabled for 0.5s');
+        console.log('[Player] ===================');
     }
 
     /**
