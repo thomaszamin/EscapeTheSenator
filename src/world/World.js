@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { Environment } from './Environment.js';
 import { Terrain } from './Terrain.js';
 import { globalEvents, Events } from '../systems/EventBus.js';
+import { Werewolf } from '../entities/Werewolf.js';
 
 export class World {
     constructor(scene) {
@@ -20,9 +21,84 @@ export class World {
         // Entities and objects
         this.entities = [];
         this.interactables = [];
+        this.werewolves = [];
+        
+        // Player reference for enemy AI
+        this.playerRef = null;
         
         // World state
         this.isLoaded = false;
+    }
+    
+    /**
+     * Set the player reference for enemy AI
+     */
+    setPlayer(player) {
+        this.playerRef = player;
+        
+        // Update existing werewolves
+        this.werewolves.forEach(wolf => {
+            wolf.setTarget(player);
+        });
+    }
+    
+    /**
+     * Spawn a werewolf at a position (or random if not specified)
+     */
+    spawnWerewolf(position = null) {
+        // Default spawn position: random location around the player
+        if (!position && this.playerRef) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 10 + Math.random() * 10;
+            position = new THREE.Vector3(
+                this.playerRef.position.x + Math.cos(angle) * distance,
+                0,
+                this.playerRef.position.z + Math.sin(angle) * distance
+            );
+        } else if (!position) {
+            position = new THREE.Vector3(
+                (Math.random() - 0.5) * 20,
+                0,
+                (Math.random() - 0.5) * 20
+            );
+        }
+        
+        const werewolf = new Werewolf(position);
+        werewolf.setObstacles(this.getObstacles());
+        
+        if (this.playerRef) {
+            werewolf.setTarget(this.playerRef);
+        }
+        
+        this.werewolves.push(werewolf);
+        this.scene.add(werewolf.mesh);
+        
+        console.log('[World] Werewolf spawned at:', position.x.toFixed(1), position.y.toFixed(1), position.z.toFixed(1));
+        
+        return werewolf;
+    }
+    
+    /**
+     * Remove a werewolf from the world
+     */
+    removeWerewolf(werewolf) {
+        const index = this.werewolves.indexOf(werewolf);
+        if (index !== -1) {
+            this.werewolves.splice(index, 1);
+            this.scene.remove(werewolf.mesh);
+            werewolf.dispose();
+        }
+    }
+    
+    /**
+     * Clear all werewolves
+     */
+    clearWerewolves() {
+        this.werewolves.forEach(wolf => {
+            this.scene.remove(wolf.mesh);
+            wolf.dispose();
+        });
+        this.werewolves = [];
     }
 
     /**
@@ -113,6 +189,11 @@ export class World {
                 entity.update(deltaTime);
             }
         });
+        
+        // Update werewolves
+        this.werewolves.forEach(wolf => {
+            wolf.update(deltaTime);
+        });
     }
 
     /**
@@ -193,6 +274,9 @@ export class World {
                 entity.dispose();
             }
         });
+        
+        // Clean up werewolves
+        this.clearWerewolves();
         
         this.entities = [];
         this.interactables = [];

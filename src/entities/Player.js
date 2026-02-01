@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { PLAYER, PHYSICS } from '../config/Constants.js';
 import { inputManager } from '../systems/InputManager.js';
 import { globalEvents, Events } from '../systems/EventBus.js';
+import { gameStateManager } from '../systems/GameStateManager.js';
 import { FirstPersonCamera } from './FirstPersonCamera.js';
 
 export class Player {
@@ -841,8 +842,24 @@ export class Player {
     checkGround() {
         const wasGrounded = this.isGrounded;
         
-        // NOTE: No hardcoded floor at Y=0 - in parkour mode, players can fall into the void
-        // and will be respawned at checkpoints by the Engine's death detection system
+        // In sandbox mode, there's a floor at Y=0
+        // In parkour mode, players can fall into the void and respawn at checkpoints
+        if (!gameStateManager.isParkourMode() && this.position.y <= 0) {
+            this.position.y = 0;
+            
+            if (this.velocity.y < 0) {
+                this.velocity.y = 0;
+            }
+            
+            this.isGrounded = true;
+            this.canJump = true;
+            this.coyoteTime = PLAYER.COYOTE_TIME;
+            
+            if (!wasGrounded) {
+                globalEvents.emit(Events.PLAYER_LAND);
+            }
+            return;
+        }
         
         // Check if standing on an obstacle (using raycast result)
         const groundResult = this.getGroundHeightWithInfo();

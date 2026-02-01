@@ -14,6 +14,7 @@ import { World } from '../world/World.js';
 import { HUD } from '../ui/HUD.js';
 import { MainMenu } from '../ui/MainMenu.js';
 import { PauseMenu } from '../ui/PauseMenu.js';
+import { SandboxUI } from '../ui/SandboxUI.js';
 
 // InfiniteWorld loaded dynamically to prevent blocking main menu if parkour fails
 let InfiniteWorldClass = null;
@@ -34,6 +35,7 @@ export class Engine {
         this.hud = null;
         this.mainMenu = null;
         this.pauseMenu = null;
+        this.sandboxUI = null;
         
         // Time tracking
         this.clock = new THREE.Clock();
@@ -82,8 +84,10 @@ export class Engine {
         // Initialize menus
         this.mainMenu = new MainMenu();
         this.pauseMenu = new PauseMenu();
+        this.sandboxUI = new SandboxUI();
         this.mainMenu.init();
         this.pauseMenu.init();
+        this.sandboxUI.init();
         
         // Build sandbox world (default)
         this.world.build();
@@ -281,6 +285,11 @@ export class Engine {
             console.log('[Engine] - Player position:', this.player.position.x, this.player.position.y, this.player.position.z);
             console.log('[Engine] - Death threshold: Y < -30');
             
+            // Hide sandbox UI in parkour mode
+            if (this.sandboxUI) {
+                this.sandboxUI.hide();
+            }
+            
         } else {
             // Sandbox mode
             if (this.activeWorld === this.infiniteWorld && this.infiniteWorld) {
@@ -296,6 +305,17 @@ export class Engine {
             this.activeWorld = this.world;
             this.player.setPosition(0, 0, 0);
             this.player.setObstacles(this.world.getObstacles());
+            
+            // Set player reference for werewolf AI
+            this.world.setPlayer(this.player);
+            
+            // Show sandbox UI
+            if (this.sandboxUI) {
+                this.sandboxUI.setWorld(this.world);
+                this.sandboxUI.show();
+            }
+            
+            console.log('[Engine] SANDBOX MODE INITIALIZED');
         }
     }
 
@@ -524,6 +544,7 @@ export class Engine {
         
         if (this.mainMenu) this.mainMenu.dispose();
         if (this.pauseMenu) this.pauseMenu.dispose();
+        if (this.sandboxUI) this.sandboxUI.dispose();
         
         globalEvents.clear();
     }
